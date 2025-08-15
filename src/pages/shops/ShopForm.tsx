@@ -123,7 +123,7 @@ interface ShopFormValues {
   logoUrl: string;
   openingDate: string;
   isActive: boolean;
-  ownerId: string; // New field for shop owner
+  //ownerId: string; // New field for shop owner
   managerId: string; // New field for shop manager
 }
 
@@ -137,7 +137,10 @@ const ShopForm = () => {
     try {
       logger.data.fetch("employees", "Fetching employee data for shop form");
       const response: any = await getEmployee();
-      logger.data.success("employees", `Loaded ${Array.isArray(response) ? response.length : 0} employees`);
+      logger.data.success(
+        "employees",
+        `Loaded ${Array.isArray(response) ? response.length : 0} employees`
+      );
       if (Array.isArray(response) && response.length > 0) {
         logger.debug("Employee data sample", response[0]);
       }
@@ -168,7 +171,7 @@ const ShopForm = () => {
     logoUrl: isEditing ? "https://example.com/logo.png" : "",
     openingDate: isEditing ? "2024-01-15" : "",
     isActive: isEditing ? true : true,
-    ownerId: isEditing ? "" : "", // New field
+    //ownerId: isEditing ? "" : "", // New field
     managerId: isEditing ? "" : "", // New field
   };
 
@@ -189,41 +192,53 @@ const ShopForm = () => {
         managerName: values.managerName || undefined,
         description: values.description || undefined,
         logoUrl: values.logoUrl || undefined,
-        openingDate: values.openingDate ? new Date(values.openingDate) : undefined,
+        openingDate: values.openingDate
+          ? new Date(values.openingDate)
+          : undefined,
       };
 
-             // Ensure managerName is set based on selected manager/owner
-       let finalManagerName = values.managerName;
-       if (!finalManagerName && (values.managerId || values.ownerId)) {
-         const selectedId = values.managerId || values.ownerId;
-         const selectedEmployee = EmployeeData.find((emp: any) => emp.id.toString() === selectedId);
-         if (selectedEmployee) {
-           finalManagerName = selectedEmployee.name;
-         }
-       }
+      // Ensure managerName is set based on selected manager/owner
+      let finalManagerName = values.managerName;
+      console.log("finalManagerName"), finalManagerName;
+      if (!finalManagerName && values.managerId) {
+        const selectedId = values.managerId;
+        const selectedEmployee = EmployeeData.find(
+          (emp: any) => emp.id.toString() === selectedId
+        );
+        console.log("selectedEmployee", selectedEmployee);
+        if (selectedEmployee) {
+          finalManagerName = selectedEmployee.name;
+        }
+      }
 
-               logger.form.submit("ShopForm", {
-          ...submitData,
-          ownerId: values.ownerId || undefined,
-          managerId: values.managerId || undefined,
-          managerName: finalManagerName || undefined,
-        });
-
-               // Submit logic would go here
-        const res = await addShop({
-          ...submitData,
-          ownerId: values.ownerId || undefined,
-          managerId: values.managerId || undefined,
-          managerName: finalManagerName || undefined,
-        });
-        logger.form.success("ShopForm", `Shop "${values.name}" created successfully`);
-      toast({
-        title: `Shop ${isEditing ? "Updated" : "Created"}`,
-        text: `${values.name} has been ${
-          isEditing ? "updated" : "created"
-        } successfully.`,
-        type: "success",
+      logger.form.submit("ShopForm", {
+        ...submitData,
+        // ownerId: values.ownerId || undefined,
+        managerId: values.managerId || undefined,
+        managerName: values.managerName || undefined,
       });
+
+      // Submit logic would go here
+      const res = await addShop({
+        ...submitData,
+        // ownerId: values.ownerId || undefined,
+        managerId: values.managerId || undefined,
+        managerName: values.managerName || undefined,
+      });
+      logger.form.success(
+        "ShopForm",
+        `Shop "${values.name}" created successfully`
+      );
+      console.log('res',res)
+      if (res) {
+        toast({
+          title: `Shop ${isEditing ? "Updated" : "Created"}`,
+          text: `${values.name} has been ${
+            isEditing ? "updated" : "created"
+          } successfully.`,
+          type: "success",
+        });
+      }
 
       setSubmitting(false);
       resetForm();
@@ -232,7 +247,7 @@ const ShopForm = () => {
         title: "Error",
         text: `Failed to ${
           isEditing ? "update" : "create"
-        } shop. Please try again.`,
+        } shop. Please try again. Error: ${error.message}`,
         type: "error",
       });
     } finally {
@@ -376,47 +391,59 @@ const ShopForm = () => {
               {/* Operational Details */}
               <div className="space-y-4  section-card">
                 <h3 className="text-lg font-medium">Operational Details</h3>
-                
+
                 {/* User Selection Info */}
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> {EmployeeData?.length || 0} user(s) available for selection. 
-                    Users must be created first in the Employees section before they can be assigned as shop owners or managers.
+                    <strong>Note:</strong> {EmployeeData?.length || 0} user(s)
+                    available for selection. Users must be created first in the
+                    Employees section before they can be assigned as shop owners
+                    or managers.
                   </p>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                                     <div className="grid gap-2">
-                     <Label htmlFor="ownerId">Shop Owner</Label>
-                     <Select
-                       value={values.ownerId}
-                       onValueChange={(value) => {
-                         setFieldValue("ownerId", value);
-                         // Auto-populate managerName when owner is selected (since they're the same)
-                         if (value && value !== "no-employees") {
-                           const selectedOwner = EmployeeData.find((emp: any) => emp.id.toString() === value);
-                           if (selectedOwner) {
-                             setFieldValue("managerName", selectedOwner.name);
-                           }
-                         } else {
-                           setFieldValue("managerName", "");
-                         }
-                       }}
-                     >
+                  {/* <div className="grid gap-2">
+                    <Label htmlFor="ownerId">Shop Owner</Label>
+                    <Select
+                      value={values.ownerId}
+                      onValueChange={(value) => {
+                        setFieldValue("ownerId", value);
+                        // Auto-populate managerName when owner is selected (since they're the same)
+                        if (value && value !== "no-employees") {
+                          const selectedOwner = EmployeeData.find(
+                            (emp: any) => emp.id.toString() === value
+                          );
+                          if (selectedOwner) {
+                            setFieldValue("managerName", selectedOwner.name);
+                          }
+                        } else {
+                          setFieldValue("managerName", "");
+                        }
+                      }}
+                    >
                       <SelectTrigger id="ownerId">
                         <SelectValue placeholder="Select owner" />
                       </SelectTrigger>
                       <SelectContent>
-                        {console.log("Rendering owner dropdown with EmployeeData:", EmployeeData)}
-                        {console.log("Available roles:", EmployeeData?.map(emp => emp.role))}
+                        {console.log(
+                          "Rendering owner dropdown with EmployeeData:",
+                          EmployeeData
+                        )}
+                        {console.log(
+                          "Available roles:",
+                          EmployeeData?.map((emp) => emp.role)
+                        )}
                         {EmployeeData && EmployeeData.length > 0 ? (
                           EmployeeData.map((employee) => (
                             <SelectItem key={employee.id} value={employee.id}>
-                              {employee.name} ({employee.role || 'no role'})
+                              {employee.name} ({employee.role || "no role"})
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="no-employees" disabled>No employees available</SelectItem>
+                          <SelectItem value="no-employees" disabled>
+                            No employees available
+                          </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -425,58 +452,60 @@ const ShopForm = () => {
                       component="div"
                       className="text-red-500 text-sm"
                     />
-                  </div>
+                  </div> */}
 
-                                     <div className="grid gap-2">
-                     <Label htmlFor="managerId">Shop Manager</Label>
-                     <Select
-                       value={values.managerId}
-                       onValueChange={(value) => {
-                         setFieldValue("managerId", value);
-                         // Auto-populate managerName when manager is selected
-                         if (value && value !== "no-employees") {
-                           const selectedManager = EmployeeData.find((emp: any) => emp.id.toString() === value);
-                           if (selectedManager) {
-                             setFieldValue("managerName", selectedManager.name);
-                           }
-                         } else {
-                           setFieldValue("managerName", "");
-                         }
-                       }}
-                     >
+                  <div className="grid gap-2">
+                    <Label htmlFor="managerId">
+                      Shop Owner/Manager{" "}
+                      <span className="text-xs text-gray-500">
+                        (only users with Role Shop Owner is visible here)
+                      </span>{" "}
+                    </Label>
+                    <Select
+                      value={values.managerId?.toString() || ""}
+                      onValueChange={(value) => {
+                        setFieldValue("managerId", value);
+                        // Auto-populate managerName when manager is selected
+                        if (value && value !== "no-employees") {
+                          const selectedManager = EmployeeData.find(
+                            (emp: any) => emp.id.toString() === value
+                          );
+                          if (selectedManager) {
+                            setFieldValue("managerName", selectedManager.name);
+                          }
+                        } else {
+                          setFieldValue("managerName", "");
+                        }
+                      }}
+                    >
                       <SelectTrigger id="managerId">
                         <SelectValue placeholder="Select manager" />
                       </SelectTrigger>
                       <SelectContent>
-                        {console.log("Rendering manager dropdown with EmployeeData:", EmployeeData)}
-                        {console.log("Available roles:", EmployeeData?.map(emp => emp.role))}
                         {EmployeeData && EmployeeData.length > 0 ? (
-                          EmployeeData.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.id}>
-                              {employee.name} ({employee.role || 'no role'})
+                          EmployeeData.filter(
+                            (i) => i.role === "Shop Owner"
+                          ).map((employee) => (
+                            <SelectItem
+                              key={employee.id}
+                              value={employee.id.toString()}
+                            >
+                              {employee.name} ({employee.role || "no role"})
                             </SelectItem>
                           ))
                         ) : (
-                          <SelectItem value="no-employees" disabled>No employees available</SelectItem>
+                          <SelectItem value="no-employees" disabled>
+                            No employees available
+                          </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
-                                         <ErrorMessage
-                       name="managerId"
-                       component="div"
-                       className="text-red-500 text-sm"
-                     />
-                   </div>
-                 </div>
-                 
-                 {/* Hidden field to track managerName */}
-                 <Field
-                   type="hidden"
-                   name="managerName"
-                   value={values.managerName}
-                 />
-
-                <div className="grid gap-4 sm:grid-cols-2">
+                    <ErrorMessage
+                      name="managerId"
+                      component="div"
+                      className="text-red-500 text-sm"
+                    />
+                  </div>
                   <div className="grid gap-2">
                     <Label htmlFor="operatingHours">Operating Hours</Label>
                     <Field
@@ -496,7 +525,14 @@ const ShopForm = () => {
                       className="text-red-500 text-sm"
                     />
                   </div>
+                </div>
+                <Field
+                  type="hidden"
+                  name="managerName"
+                  value={values.managerName}
+                />
 
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div className="grid gap-2">
                     <Label htmlFor="maxCapacity">Maximum Capacity</Label>
                     <Field
@@ -517,27 +553,28 @@ const ShopForm = () => {
                       className="text-red-500 text-sm"
                     />
                   </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="openingDate">Opening Date</Label>
+                    <Field
+                      as={Input}
+                      id="openingDate"
+                      name="openingDate"
+                      type="date"
+                      className={
+                        errors.openingDate && touched.openingDate
+                          ? "border-red-500"
+                          : ""
+                      }
+                    />
+                    <ErrorMessage
+                      name="openingDate"
+                      component="div"
+                      className="text-red-500 text-sm"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="openingDate">Opening Date</Label>
-                  <Field
-                    as={Input}
-                    id="openingDate"
-                    name="openingDate"
-                    type="date"
-                    className={
-                      errors.openingDate && touched.openingDate
-                        ? "border-red-500"
-                        : ""
-                    }
-                  />
-                  <ErrorMessage
-                    name="openingDate"
-                    component="div"
-                    className="text-red-500 text-sm"
-                  />
-                </div>
+                {/* Hidden field to track managerName */}
               </div>
 
               {/* Additional Information */}

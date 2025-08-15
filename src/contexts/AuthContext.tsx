@@ -30,6 +30,8 @@ interface AuthContextType {
   hasRole: (roleName: string) => boolean;
   hasAnyRole: (roleNames: string[]) => boolean;
   getUserShopId: () => string | undefined;
+  isLoading: boolean;
+  isInitialized: boolean;
 }
 
 interface User {
@@ -47,7 +49,7 @@ interface User {
     id: string;
     name: string;
   };
-  premissions: any;
+  permissions: any; // Fixed typo: was "premissions"
 }
 
 interface LoginResponse {
@@ -72,11 +74,27 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
+// Loading Spinner Component
+const LoadingSpinner = () => (
+  <div className="fixed inset-0 bg-white dark:bg-gray-900 flex items-center justify-center z-50">
+    <div className="flex flex-col items-center space-y-4">
+      <div className="relative">
+        <div className="w-12 h-12 rounded-full border-4 border-gray-200 dark:border-gray-700"></div>
+        <div className="absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
+      </div>
+      <p className="text-gray-600 dark:text-gray-300 text-sm font-medium">
+        Verifying authentication...
+      </p>
+    </div>
+  </div>
+);
+
 const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
   const navigate = useNavigate();
 
   // Helper functions for role-based access
@@ -85,121 +103,237 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     logger.auth.roleCheck("Admin", hasAccess);
     return hasAccess;
   };
+
   const isEmployee = () => {
     const hasAccess = user?.role ? isShopOwnerRole(user.role) : false; // Shop Owner is the employee role
     logger.auth.roleCheck("Shop Owner (Employee)", hasAccess);
     return hasAccess;
   };
+
   const isShopOwner = () => {
     const hasAccess = user?.role ? isShopOwnerRole(user.role) : false;
     logger.auth.roleCheck("Shop Owner", hasAccess);
     return hasAccess;
   };
+
   const hasRole = (roleName: string) => {
     const hasAccess = user?.role === roleName;
     logger.auth.roleCheck(roleName, hasAccess);
     return hasAccess;
   };
-  const hasAnyRole = (roleNames: string[]) => {
+
+  const hasAnyRoleCheck = (roleNames: string[]) => {
     const hasAccess = user?.role ? roleNames.includes(user.role) : false;
     logger.auth.roleCheck(`${roleNames.join("|")}`, hasAccess);
     return hasAccess;
   };
+
   const getUserShopId = () => user?.ownedShop?.id || user?.managedShop?.id;
+  const normalizeRoleName = (roleName: string): string => {
+    // Convert spaces to underscores and handle common variations
+    return roleName
+      .trim()
+      .replace(/\s+/g, "_") // Replace spaces with underscores
+      .toLowerCase(); // Make case-insensitive
+  };
+  // Comprehensive authentication verification
+  const verifyUserAuthentication = async (userData: User, token: string) => {
+    try {
+      console.log("Verifying user data:", userData);
+      console.log("Available roles:", roles);
+
+      // Validate user has required properties
+      if (!userData.id || !userData.role || !userData.email) {
+        console.error("Missing required user properties:", {
+          hasId: !!userData.id,
+          hasRole: !!userData.role,
+          hasEmail: !!userData.email,
+        });
+        throw new Error("Invalid user data structure");
+      }
+
+      // Enhanced role validation with normalization
+      if (roles.length > 0) {
+        const normalizedUserRole = normalizeRoleName(userData.role);
+        const availableRoleNames = roles.map((role) =>
+          normalizeRoleName(role.name)
+        );
+
+        console.log("Normalized user role:", normalizedUserRole);
+        console.log("Available normalized roles:", availableRoleNames);
+
+        const userHasValidRole =
+          availableRoleNames.includes(normalizedUserRole);
+
+        if (!userHasValidRole) {
+          console.error(
+            `Invalid user role: ${userData.role} (normalized: ${normalizedUserRole})`
+          );
+          console.error(
+            "Available roles:",
+            roles.map((r) => r.name)
+          );
+          throw new Error(`Invalid user role: ${userData.role}`);
+        }
+
+        console.log("Role validation passed for:", userData.role);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("User verification failed:", error);
+      return false;
+    }
+  };
 
   // Fetch roles on app load
   useEffect(() => {
     const loadRoles = async () => {
       try {
+        setIsLoading(true);
         const rolesData: any = await fetchRoles();
         setRoles(rolesData);
         logger.data.success("roles", `Loaded ${rolesData.length} roles`);
+        return rolesData;
       } catch (error) {
         logger.data.error("roles", error);
+        return [];
       }
     };
 
     loadRoles();
   }, []);
 
-  // On app load, check token expiry and refresh if needed
+  // Enhanced authentication check on app load
   useEffect(() => {
-    const checkAuth = async () => {
-      const token = sessionStorage.getItem("auth_token");
-      const userData = sessionStorage.getItem("user_data");
-      if (token && userData) {
+    const initializeAuth = async () => {
+      try {
+        setIsLoading(true);
+
+        const token = sessionStorage.getItem("auth_token");
+        const userData = sessionStorage.getItem("user_data");
+
+        if (!token || !userData) {
+          setIsAuthenticated(false);
+          setUser(null);
+          setIsInitialized(true);
+          setIsLoading(false);
+          return;
+        }
+
+        // Check token expiry
         if (isTokenExpired(token)) {
-          // Try to refresh
           try {
             const response = await fetch("/api/auth/refresh", {
               method: "POST",
               credentials: "include",
             });
+
             if (response.ok) {
-              const data = await response.json();
-              sessionStorage.setItem("auth_token", data.token);
-              sessionStorage.setItem("user_data", JSON.stringify(data.user));
-              setIsAuthenticated(true);
-              setUser(data.user);
+              const refreshData = await response.json();
+              sessionStorage.setItem("auth_token", refreshData.token);
+              sessionStorage.setItem(
+                "user_data",
+                JSON.stringify(refreshData.user)
+              );
+
+              // Verify the refreshed user data
+              const isValid = await verifyUserAuthentication(
+                refreshData.user,
+                refreshData.token
+              );
+              if (isValid) {
+                setIsAuthenticated(true);
+                setUser(refreshData.user);
+              } else {
+                throw new Error("Invalid refreshed user data");
+              }
             } else {
-              sessionStorage.removeItem("auth_token");
-              sessionStorage.removeItem("user_data");
-              setIsAuthenticated(false);
-              setUser(null);
+              throw new Error("Token refresh failed");
             }
-          } catch {
+          } catch (refreshError) {
             sessionStorage.removeItem("auth_token");
             sessionStorage.removeItem("user_data");
             setIsAuthenticated(false);
             setUser(null);
           }
         } else {
-          setIsAuthenticated(true);
-          setUser(JSON.parse(userData));
+          // Token is valid, verify user data
+          const parsedUserData = JSON.parse(userData);
+          const isValid = await verifyUserAuthentication(parsedUserData, token);
+
+          if (isValid) {
+            setIsAuthenticated(true);
+            setUser(parsedUserData);
+          }
         }
-      } else {
+      } catch (error) {
+        sessionStorage.removeItem("auth_token");
+        sessionStorage.removeItem("user_data");
         setIsAuthenticated(false);
         setUser(null);
+      } finally {
+        setIsInitialized(true);
+        setIsLoading(false);
       }
-      setLoading(false);
     };
-    checkAuth();
-  }, []);
 
-  // Proactive token expiry check on every route change (optional, for extra safety)
+    // Only initialize after roles are available or after a reasonable timeout
+    if (roles.length > 0) {
+      initializeAuth();
+    } else {
+      // Fallback timeout to prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        initializeAuth();
+      }, 5000);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [roles]);
+
+  // Proactive token expiry check
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(async () => {
       const token = sessionStorage.getItem("auth_token");
       if (token && isTokenExpired(token)) {
-        // Try to refresh
-        fetch("/api/auth/refresh", {
-          method: "POST",
-          credentials: "include",
-        })
-          .then((response) => {
-            if (response.ok) {
-              return response.json();
-            } else {
-              throw new Error("Refresh failed");
-            }
-          })
-          .then((data) => {
+        try {
+          const response = await fetch("/api/auth/refresh", {
+            method: "POST",
+            credentials: "include",
+          });
+
+          if (response.ok) {
+            const data = await response.json();
             sessionStorage.setItem("auth_token", data.token);
             sessionStorage.setItem("user_data", JSON.stringify(data.user));
-            setIsAuthenticated(true);
-            setUser(data.user);
-          })
-          .catch(() => {
-            sessionStorage.removeItem("auth_token");
-            sessionStorage.removeItem("user_data");
-            setIsAuthenticated(false);
-            setUser(null);
-            navigate("/login");
-          });
+
+            const isValid = await verifyUserAuthentication(
+              data.user,
+              data.token
+            );
+            if (isValid) {
+              setIsAuthenticated(true);
+              setUser(data.user);
+            } else {
+              throw new Error("Invalid auto-refreshed user data");
+            }
+          } else {
+            throw new Error("Auto-refresh failed");
+          }
+        } catch (error) {
+          sessionStorage.removeItem("auth_token");
+          sessionStorage.removeItem("user_data");
+          setIsAuthenticated(false);
+          setUser(null);
+          navigate("/login");
+        }
       }
-    }, 60 * 1000); // check every minute
+    }, 60 * 1000); // Check every minute
+
     return () => clearInterval(interval);
-  }, [navigate]);
+  }, [isAuthenticated, navigate]);
 
   // Listen for authentication failures from the service layer
   useEffect(() => {
@@ -209,7 +343,8 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       );
       setIsAuthenticated(false);
       setUser(null);
-      // Don't navigate automatically, let the component handle it
+      sessionStorage.removeItem("auth_token");
+      sessionStorage.removeItem("user_data");
     };
 
     window.addEventListener("auth:token-expired", handleAuthFailure);
@@ -219,17 +354,38 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      setIsLoading(true);
       logger.auth.login(`Attempting login for ${email}`);
+
       const response = await loginApi(email, password);
+      console.log("Login API response:", response); // Add debugging
+
       const { token, user }: any = response;
+
+      // Add validation for the response structure
+      if (!token || !user) {
+        throw new Error(
+          "Invalid response from login API - missing token or user"
+        );
+      }
+
+      // Verify user data before setting state
+      const isValid = await verifyUserAuthentication(user, token);
+      if (!isValid) {
+        throw new Error("Invalid user data received from login");
+      }
+
       sessionStorage.setItem("auth_token", token);
       sessionStorage.setItem("user_data", JSON.stringify(user));
+
       setUser(user);
       setIsAuthenticated(true);
+
       logger.auth.login(`Login successful for ${user.name}`, {
         userId: user.id,
         role: user.role,
       });
+
       Swal.fire({
         icon: "success",
         title: "Login Successful",
@@ -239,8 +395,15 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         showConfirmButton: false,
         timer: 3000,
       });
-      navigate("/");
+
+      // Small delay to ensure state is properly set before navigation
+      setTimeout(() => {
+        navigate("/");
+        setIsLoading(false);
+      }, 100);
     } catch (error) {
+      setIsLoading(false);
+      console.error("Login error details:", error); // Enhanced error logging
       logger.auth.login(`Login failed for ${email}`, error);
       throw error;
     }
@@ -248,16 +411,20 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = async () => {
     try {
+      setIsLoading(true);
       logger.auth.logout(`Logging out user ${user?.name || "Unknown"}`);
       await logoutApi(); // Call backend to clear refresh token cookie
     } catch (e) {
       // Ignore errors
     }
+
     sessionStorage.removeItem("auth_token");
     sessionStorage.removeItem("user_data");
     setUser(null);
     setIsAuthenticated(false);
+
     logger.auth.logout("User logged out successfully");
+
     Swal.fire({
       icon: "success",
       title: "Logged out",
@@ -267,10 +434,15 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       showConfirmButton: false,
       timer: 3000,
     });
+
+    setIsLoading(false);
     navigate("/login");
   };
 
-  if (loading) return null; // or a loading spinner
+  // Show loading spinner until fully initialized
+  if (isLoading || !isInitialized) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <AuthContext.Provider
@@ -284,8 +456,10 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         isEmployee,
         isShopOwner,
         hasRole,
-        hasAnyRole,
+        hasAnyRole: hasAnyRoleCheck,
         getUserShopId,
+        isLoading,
+        isInitialized,
       }}
     >
       {children}

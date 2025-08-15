@@ -1,4 +1,5 @@
 import { LoginResponse } from "@/pages/types";
+import { API_URL } from "@/services/apiuri";
 import { service } from "@/services/service";
 
 // Updated to explicitly console.log the URL being called for debugging
@@ -6,7 +7,7 @@ export const loginApi = async (email: string, password: string) => {
 
   try {
     const response = await service<LoginResponse>({
-      url: "/auth/login",
+      url: API_URL.auth.login,
       method: "POST",
       data: { email, password },
     });
@@ -21,7 +22,7 @@ export const loginApi = async (email: string, password: string) => {
 export const logoutApi = async () => {
   try {
     await service({
-      url: "/auth/logout",
+      url: API_URL.auth.logout,
       method: "POST",
     });
   } catch (error) {
@@ -33,7 +34,7 @@ export const logoutApi = async () => {
 export const registerApi = async (data: any) => {
   try {
     const response = await service<LoginResponse>({
-      url: "/auth/register",
+      url: API_URL.auth.register,
       method: "POST",
       data: data,
     });

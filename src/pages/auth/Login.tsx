@@ -26,7 +26,8 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      const res = await login(email, password);
+      console.log("Login successful:", res);
     } catch (error) {
       Swal.fire({
         icon: "error",
