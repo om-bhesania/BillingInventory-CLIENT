@@ -1,6 +1,7 @@
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { NotificationsProvider } from "@/contexts/NotificationsContext";
 import { PermissionProvider } from "./contexts/PermissionsContext";
 
 import {
@@ -12,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import AppRoutes from "./AppRoutes";
 import Login from "./pages/auth/Login";
+import { usePingUser } from "@/hooks/use-pingUser";
 
 const queryClient = new QueryClient();
 
@@ -21,13 +23,16 @@ printFrontendInfo();
 printRoutesInfo();
 
 const App = () => {
+  // Call ping on load to validate token and fetch user info
+  usePingUser();
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Sonner />
         <BrowserRouter>
           <AuthProvider>
-            <Routes>
+            <NotificationsProvider>
+              <Routes>
               {/* Public Routes */}
               <Route path="/login" element={<Login />} />
 
@@ -40,7 +45,8 @@ const App = () => {
                   </PermissionProvider>
                 }
               />
-            </Routes>
+              </Routes>
+            </NotificationsProvider>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,35 +9,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Plus } from "lucide-react";
-import { useState } from "react";
+import Table from "@/components/ui/table";
+import { Minus, Plus, Trash2, Printer } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Swal from "sweetalert2";
+import { invoiceColumns } from "./Columns";
+import { printInvoice } from "@/lib/utils";
+import { pingUser } from "@/apis/pingapi";
+import { getShop } from "@/apis/shopapi";
+import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
+import { createBilling } from "@/apis/billingApi";
+ 
 
-const shops = [
-  { value: "shop-a", label: "Shop A" },
-  { value: "shop-b", label: "Shop B" },
-  { value: "shop-c", label: "Shop C" },
-  { value: "shop-d", label: "Shop D" },
-  { value: "shop-e", label: "Shop E" },
-];
-
-// Mock inventory items
-const inventoryItems = [
-  { id: "item1", name: "Vanilla Flavor", price: 150 },
-  { id: "item2", name: "Chocolate Flavor", price: 180 },
-  { id: "item3", name: "Strawberry Flavor", price: 170 },
-  { id: "item4", name: "Butter Scotch", price: 200 },
-  { id: "item5", name: "Chocolate Chips", price: 50 },
-  { id: "item6", name: "Waffle Cone", price: 30 },
-];
+type RoleString = string | null | undefined;
 
 interface InvoiceItem {
   id: string;
-  itemId: string;
+  productId: string;
   name: string;
   quantity: number;
-  price: number;
+  unitPrice: number;
 }
 
 const InvoiceForm = () => {
@@ -46,22 +37,85 @@ const InvoiceForm = () => {
   const navigate = useNavigate();
   const isEditing = !!id;
 
+  // get all shops
+
   // Initial form state
   const [formData, setFormData] = useState({
-    customer: isEditing ? "Customer 1" : "",
-    contactNumber: isEditing ? "+91 9876543210" : "",
-    shop: isEditing ? "shop-a" : "",
-    invoiceDate: isEditing
-      ? new Date().toISOString().split("T")[0]
-      : new Date().toISOString().split("T")[0],
-    items: isEditing
-      ? [
-        { id: "1", itemId: "item1", name: "Vanilla Flavor", quantity: 2, price: 150 },
-        { id: "2", itemId: "item3", name: "Strawberry Flavor", quantity: 1, price: 170 },
-      ] as InvoiceItem[]
-      : [] as InvoiceItem[],
-    notes: isEditing ? "Thank you for your purchase!" : "",
+    invoiceNumber: "",
+    customerName: "",
+    customerEmail: "",
+    shopId: "",
+    invoiceDate: new Date().toISOString().split("T")[0],
+    items: [] as InvoiceItem[],
+    notes: "",
   });
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [userRole, setUserRole] = useState<RoleString>(null);
+  const [managedShops, setManagedShops] = useState<{ id: string; name: string }[]>([]);
+  const [allShops, setAllShops] = useState<{ id: string; name: string }[]>([]);
+  const [inventory, setInventory] = useState<ShopInventoryItem[]>([]);
+
+  const isOwner = useMemo(() => {
+    const role = (userRole || "").toLowerCase();
+    return role === "owner" || role === "admin";
+  }, [userRole]);
+
+  const isShopOwner = useMemo(() => {
+    const role = (userRole || "").toLowerCase();
+    return role === "shop owner" || role === "shop_owner" || role === "shopowner";
+  }, [userRole]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        setIsLoading(true);
+        const ping = await pingUser();
+        const role = ping.user?.role || null;
+        setUserRole(role);
+        const userManaged = ping.user?.managedShops || [];
+        setManagedShops(userManaged.map(s => ({ id: s.id, name: s.name })));
+
+        if (role && (role.toLowerCase() === "owner" || role.toLowerCase() === "admin")) {
+          const shopsResp: any = await getShop();
+          const shopsList = (Array.isArray(shopsResp) ? shopsResp : shopsResp?.shops || shopsResp?.data || [])
+            .map((s: any) => ({ id: s.id, name: s.name }))
+            .filter((s: any) => s.id && s.name);
+          setAllShops(shopsList);
+        } else if (userManaged.length > 0) {
+          const defaultShopId = userManaged[0].id;
+          setFormData(prev => ({ ...prev, shopId: defaultShopId }));
+        }
+
+        // Prefill next invoice number by looking up latest billing for selected shop once selected
+      } catch (e) {
+        console.error("Failed to initialize invoice form", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    init();
+  }, []);
+
+  useEffect(() => {
+    const loadInventory = async () => {
+      if (!formData.shopId) {
+        setInventory([]);
+        return;
+      }
+      try {
+        setIsLoading(true);
+        const items = await getShopInventory(formData.shopId);
+        setInventory(items || []);
+      } catch (e) {
+        console.error("Failed to load inventory", e);
+        setInventory([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadInventory();
+  }, [formData.shopId]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -77,10 +131,10 @@ const InvoiceForm = () => {
   const addItem = () => {
     const newItem: InvoiceItem = {
       id: Date.now().toString(),
-      itemId: "",
+      productId: "",
       name: "",
       quantity: 1,
-      price: 0,
+      unitPrice: 0,
     };
 
     setFormData({
@@ -101,14 +155,14 @@ const InvoiceForm = () => {
       ...formData,
       items: formData.items.map((item) => {
         if (item.id === id) {
-          if (field === "itemId") {
-            const selectedItem = inventoryItems.find((invItem) => invItem.id === value);
-            if (selectedItem) {
+          if (field === "productId") {
+            const selected = inventory.find((inv) => inv.product.id === value);
+            if (selected) {
               return {
                 ...item,
-                itemId: value,
-                name: selectedItem.name,
-                price: selectedItem.price,
+                productId: value,
+                name: selected.product.name,
+                unitPrice: selected.product.unitPrice,
               };
             }
           }
@@ -119,9 +173,21 @@ const InvoiceForm = () => {
     });
   };
 
+  const decrementQty = (id: string) => {
+    const item = formData.items.find((i) => i.id === id);
+    if (!item) return;
+    updateItem(id, "quantity", Math.max(1, (item.quantity || 1) - 1));
+  };
+
+  const incrementQty = (id: string) => {
+    const item = formData.items.find((i) => i.id === id);
+    if (!item) return;
+    updateItem(id, "quantity", (item.quantity || 1) + 1);
+  };
+
   const calculateSubtotal = () => {
     return formData.items.reduce(
-      (total, item) => total + item.price * item.quantity,
+      (total, item) => total + (item.unitPrice || 0) * (item.quantity || 0),
       0
     );
   };
@@ -134,11 +200,10 @@ const InvoiceForm = () => {
     return calculateSubtotal() + calculateTax();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation
-    if (!formData.customer || !formData.shop || formData.items.length === 0) {
+    if (!formData.customerName || !formData.shopId || formData.items.length === 0) {
       Swal.fire({
         title: "Validation Error",
         text: "Please fill all required fields and add at least one item",
@@ -150,32 +215,53 @@ const InvoiceForm = () => {
 
     // Check if all items have valid selections
     const hasInvalidItems = formData.items.some(
-      (item) => !item.itemId || item.quantity <= 0
+      (item) => !item.productId || item.quantity <= 0
     );
 
     if (hasInvalidItems) {
-       Swal.fire({
-         title: "Validation Error",
-         text:
-           "Please ensure all items are properly selected and quantities are valid",
-         icon: "error",
-         confirmButtonText: "OK",
-       });
+      Swal.fire({
+        title: "Validation Error",
+        text: "Please ensure all items are properly selected and quantities are valid",
+        icon: "error",
+        confirmButtonText: "OK",
+      });
       return;
     }
 
-    // Submit logic would go here
-    console.log("Form submitted:", formData);
-
-     Swal.fire({
-       title: `Invoice ${isEditing ? "Updated" : "Created"}`,
-       text: `Invoice has been ${
-         isEditing ? "updated" : "created"
-       } successfully.`,
-       icon: "success", 
-     });
-
-    navigate("/invoices");
+    try {
+      setIsLoading(true);
+      const payload = {
+        shopId: formData.shopId,
+        invoiceNumber: formData.invoiceNumber || undefined,
+        customerName: formData.customerName,
+        customerEmail: formData.customerEmail || undefined,
+        items: formData.items.map(it => ({
+          productId: it.productId,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+        })),
+        subtotal: Number(calculateSubtotal().toFixed(2)),
+        tax: Number(calculateTax().toFixed(2)),
+        discount: 0,
+        total: Number(calculateTotal().toFixed(2)),
+      };
+      const billing = await createBilling(payload as any);
+      Swal.fire({
+        title: `Invoice Created`,
+        text: `Invoice ${billing.id} created successfully`,
+        icon: "success",
+      });
+      navigate("/invoices");
+    } catch (err: any) {
+      console.error("Create billing failed", err);
+      Swal.fire({
+        title: "Error",
+        text: err?.message || "Failed to create invoice",
+        icon: "error",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -197,11 +283,21 @@ const InvoiceForm = () => {
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="customer">Customer Name *</Label>
+              <Label htmlFor="invoiceNumber">Invoice Number</Label>
               <Input
-                id="customer"
-                name="customer"
-                value={formData.customer}
+                id="invoiceNumber"
+                name="invoiceNumber"
+                value={formData.invoiceNumber}
+                onChange={handleChange}
+                placeholder="e.g., 0004"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customerName">Customer Name *</Label>
+              <Input
+                id="customerName"
+                name="customerName"
+                value={formData.customerName}
                 onChange={handleChange}
                 placeholder="Enter customer name"
                 required
@@ -209,37 +305,48 @@ const InvoiceForm = () => {
             </div>
 
             <div>
-              <Label htmlFor="contactNumber">Contact Number</Label>
+              <Label htmlFor="customerEmail">Customer Email</Label>
               <Input
-                id="contactNumber"
-                name="contactNumber"
-                value={formData.contactNumber}
+                id="customerEmail"
+                name="customerEmail"
+                value={formData.customerEmail}
                 onChange={handleChange}
-                placeholder="Enter contact number"
+                placeholder="Enter customer email (optional)"
               />
             </div>
           </div>
 
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="shop">Shop *</Label>
-              <Select
-                value={formData.shop}
-                onValueChange={(value) => handleSelectChange("shop", value)}
-                required
-              >
-                <SelectTrigger id="shop">
-                  <SelectValue placeholder="Select shop" />
-                </SelectTrigger>
-                <SelectContent>
-                  {shops.map((shop) => (
-                    <SelectItem key={shop.value} value={shop.value}>
-                      {shop.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isOwner && (
+              <div>
+                <Label htmlFor="shopId">Shop *</Label>
+                <Select
+                  value={formData.shopId}
+                  onValueChange={(value) => handleSelectChange("shopId", value)}
+                  required
+                >
+                  <SelectTrigger id="shopId">
+                    <SelectValue placeholder="Select shop" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allShops.map((shop) => (
+                      <SelectItem key={shop.id} value={shop.id}>
+                        {shop.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {isShopOwner && (
+              <div>
+                <Label>Shop</Label>
+                <div className="px-3 py-2 border rounded-md bg-muted/30">
+                  {managedShops.find(s => s.id === formData.shopId)?.name || managedShops[0]?.name || "Your Shop"}
+                </div>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="invoiceDate">Invoice Date</Label>
@@ -266,117 +373,83 @@ const InvoiceForm = () => {
             </Button>
           </div>
 
-          <div className="rounded-md border">
-            {/* <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead className="text-right w-[150px]">Price (₹)</TableHead>
-                  <TableHead className="text-right w-[100px]">Quantity</TableHead>
-                  <TableHead className="text-right w-[150px]">Total (₹)</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+          <div className="rounded-md border overflow-hidden">
+            <div>
+              <thead>
+                <tr className="bg-muted/40">
+                  <th className="text-left px-3 py-2">Item</th>
+                  <th className="text-right px-3 py-2 w-[150px]">Price (₹)</th>
+                  <th className="text-right px-3 py-2 w-[160px]">Quantity</th>
+                  <th className="text-right px-3 py-2 w-[150px]">Total (₹)</th>
+                  <th className="px-3 py-2 w-[60px]"></th>
+                </tr>
+              </thead>
+              <tbody>
                 {formData.items.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
+                  <tr>
+                    <td colSpan={5} className="h-24 text-center text-sm text-muted-foreground">
                       No items added. Click "Add Item" to add invoice items.
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 ) : (
                   formData.items.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
+                    <tr key={item.id}>
+                      <td className="px-3 py-2">
                         <Select
-                          value={item.itemId}
-                          onValueChange={(value) =>
-                            updateItem(item.id, "itemId", value)
-                          }
+                          value={item.productId}
+                          onValueChange={(value) => updateItem(item.id, "productId", value)}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select item" />
                           </SelectTrigger>
                           <SelectContent>
-                            {inventoryItems.map((invItem) => (
-                              <SelectItem key={invItem.id} value={invItem.id}>
-                                {invItem.name}
+                            {inventory.map((inv) => (
+                              <SelectItem key={inv.product.id} value={inv.product.id}>
+                                {inv.product.name} (₹{inv.product.unitPrice}) — Stock: {inv.currentStock}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {item.price.toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end space-x-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() =>
-                              updateItem(
-                                item.id,
-                                "quantity",
-                                Math.max(1, item.quantity - 1)
-                              )
-                            }
-                          >
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Input
+                          type="number"
+                          value={item.unitPrice}
+                          onChange={(e) => updateItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)}
+                          className="h-8 w-[120px] ml-auto text-right"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => decrementQty(item.id)}>
                             <Minus className="h-3 w-3" />
-                            <span className="sr-only">Decrease</span>
                           </Button>
                           <Input
                             type="number"
                             min="1"
                             value={item.quantity}
-                            onChange={(e) =>
-                              updateItem(
-                                item.id,
-                                "quantity",
-                                parseInt(e.target.value) || 1
-                              )
-                            }
+                            onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)}
                             className="h-8 w-14 text-center"
                           />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() =>
-                              updateItem(
-                                item.id,
-                                "quantity",
-                                item.quantity + 1
-                              )
-                            }
-                          >
+                          <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => incrementQty(item.id)}>
                             <Plus className="h-3 w-3" />
-                            <span className="sr-only">Increase</span>
                           </Button>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {(item.price * item.quantity).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeItem(item.id)}
-                        >
+                      </td>
+                      <td className="px-3 py-2 text-right font-medium">
+                        {((item.unitPrice || 0) * (item.quantity || 0)).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button type="button" variant="ghost" size="icon" onClick={() => removeItem(item.id)}>
                           <Trash2 className="h-4 w-4" />
                           <span className="sr-only">Remove</span>
                         </Button>
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   ))
                 )}
-              </TableBody>
-            </Table> */}
+              </tbody>
+            </div>
           </div>
         </div>
 
@@ -412,6 +485,9 @@ const InvoiceForm = () => {
         <div className="flex gap-4">
           <Button type="submit">
             {isEditing ? "Update Invoice" : "Create Invoice"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => printInvoice(formData)}>
+            <Printer className="h-4 w-4 mr-2" /> Print
           </Button>
           <Button
             type="button"

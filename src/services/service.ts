@@ -4,6 +4,7 @@ import { logger } from "@/utils/logger";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
+  withCredentials: true, // ensure refresh cookie is sent
 });
 
 // Request interceptor
@@ -53,7 +54,7 @@ api.interceptors.response.use(
       try {
         logger.auth.tokenRefresh("Attempting to refresh token...");
         // Attempt to refresh the token
-        const refreshResponse = await api.post("/auth/refresh", {}, { withCredentials: true });
+        const refreshResponse = await api.post("/auth/refresh", {});
         const { token, user } = refreshResponse.data;
         if (token) {
           logger.auth.tokenRefresh("Token refreshed successfully", { userId: user?.id });

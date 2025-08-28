@@ -1,5 +1,5 @@
 import { getEmployee } from "@/apis/employeeapi";
-import { addShop } from "@/apis/shopapi";
+import { addShop, getShopById, updateShop, deleteShop } from "@/apis/shopapi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,18 +12,12 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/hooks/use-toast";
+import useToast from "@/hooks/use-toast";
 import { logger } from "@/utils/logger";
 import { ErrorMessage, Field, Form, Formik } from "formik";
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import * as Yup from "yup";
-const managers = [
-  { value: "manager-1", label: "Manager 1" },
-  { value: "manager-2", label: "Manager 2" },
-  { value: "manager-3", label: "Manager 3" },
-  { value: "manager-4", label: "Manager 4" },
-];
 
 // Validation Schema
 const shopValidationSchema = Yup.object({
@@ -31,13 +25,6 @@ const shopValidationSchema = Yup.object({
     .required("Shop name is required")
     .min(2, "Shop name must be at least 2 characters")
     .max(100, "Shop name must be less than 100 characters"),
-
-  location: Yup.string()
-    .nullable()
-    .transform((value, originalValue) => {
-      return originalValue === "" ? null : value;
-    })
-    .max(200, "Location must be less than 200 characters"),
 
   address: Yup.string()
     .nullable()
@@ -112,7 +99,6 @@ const shopValidationSchema = Yup.object({
 
 interface ShopFormValues {
   name: string;
-  location: string;
   address: string;
   contactNumber: string;
   email: string;
@@ -124,56 +110,76 @@ interface ShopFormValues {
   openingDate: string;
   isActive: boolean;
   //ownerId: string; // New field for shop owner
-  managerId: string; // New field for shop manager
+  publicId: string; // New field for shop manager (publicId is always a string)
 }
 
 const ShopForm = () => {
-  const { id } = useParams();
+  const navigate = useNavigate();
+  const params = useParams();
+  const [searchParams] = useSearchParams();
+  const idRaw = params.id || searchParams.get("id") || "";
+  const id = idRaw ? idRaw.replace("id=", "") : "";
   const isEditing = !!id;
   const [EmployeeData, setEmployeeData] = useState<any>([]);
+  const [loadedShop, setLoadedShop] = useState<any | null>(null);
+  const { toast } = useToast();
   // const v4 = uuidv4()
   // console.log('first',v4)
-  const fetchEmployeeData = async () => {
-    try {
-      logger.data.fetch("employees", "Fetching employee data for shop form");
-      const response: any = await getEmployee();
-      logger.data.success(
-        "employees",
-        `Loaded ${Array.isArray(response) ? response.length : 0} employees`
-      );
-      if (Array.isArray(response) && response.length > 0) {
-        logger.debug("Employee data sample", response[0]);
-      }
-      setEmployeeData(response);
-    } catch (error) {
-      logger.data.error("employees", error);
-      return false;
-    }
-  };
 
   useEffect(() => {
+    const fetchEmployeeData = async () => {
+      try {
+        logger.data.fetch("employees", "Fetching employee data for shop form");
+        const response: any = await getEmployee();
+        logger.data.success(
+          "employees",
+          `Loaded ${Array.isArray(response) ? response.length : 0} employees`
+        );
+        if (Array.isArray(response) && response.length > 0) {
+          logger.debug("Employee data sample", response[0]);
+        }
+        setEmployeeData(response);
+      } catch (error) {
+        logger.data.error("employees", error);
+        return false;
+      }
+    };
     fetchEmployeeData();
   }, []);
 
+  useEffect(() => {
+    const load = async () => {
+      if (!isEditing || !id) return;
+      try {
+        const data: any = await getShopById(id);
+        setLoadedShop(data);
+      } catch (e) {
+        // ignore
+      }
+    };
+    load();
+  }, [isEditing, id]);
+
   // Initial form values
-  const initialValues: ShopFormValues = {
-    name: isEditing ? "Shop A" : "",
-    location: isEditing ? "Downtown Area" : "",
-    address: isEditing ? "123 Main Street, City, State 12345" : "",
-    contactNumber: isEditing ? "+91 8800000000" : "",
-    email: isEditing ? "shop.a@iceberg.com" : "",
-    operatingHours: isEditing ? "09:00 AM - 10:00 PM" : "",
-    managerName: isEditing ? "John Doe" : "",
-    maxCapacity: isEditing ? 50 : "",
-    description: isEditing
-      ? "Our flagship ice cream shop with premium quality products and excellent customer service."
-      : "",
-    logoUrl: isEditing ? "https://example.com/logo.png" : "",
-    openingDate: isEditing ? "2024-01-15" : "",
-    isActive: isEditing ? true : true,
-    //ownerId: isEditing ? "" : "", // New field
-    managerId: isEditing ? "" : "", // New field
-  };
+  const initialValues: ShopFormValues = useMemo(
+    () => ({
+      name: loadedShop?.name || "",
+      address: loadedShop?.address || "",
+      contactNumber: loadedShop?.contactNumber || "",
+      email: loadedShop?.email || "",
+      operatingHours: loadedShop?.operatingHours || "",
+      managerName: loadedShop?.managerName || "",
+      maxCapacity: loadedShop?.maxCapacity ?? "",
+      description: loadedShop?.description || "",
+      logoUrl: loadedShop?.logoUrl || "",
+      openingDate: loadedShop?.openingDate
+        ? String(loadedShop.openingDate).slice(0, 10)
+        : "",
+      isActive: loadedShop?.isActive ?? true,
+      publicId: loadedShop?.publicId || "",
+    }),
+    [loadedShop]
+  );
 
   const handleSubmit = async (
     values: ShopFormValues,
@@ -184,7 +190,7 @@ const ShopForm = () => {
       const submitData = {
         ...values,
         maxCapacity: values.maxCapacity === "" ? null : values.maxCapacity,
-        location: values.location || undefined,
+        // location: values.location || undefined,
         address: values.address || undefined,
         contactNumber: values.contactNumber || undefined,
         email: values.email || undefined,
@@ -200,10 +206,10 @@ const ShopForm = () => {
       // Ensure managerName is set based on selected manager/owner
       let finalManagerName = values.managerName;
       console.log("finalManagerName"), finalManagerName;
-      if (!finalManagerName && values.managerId) {
-        const selectedId = values.managerId;
+      if (!finalManagerName && values.publicId) {
+        const selectedPublicId = values.publicId;
         const selectedEmployee = EmployeeData.find(
-          (emp: any) => emp.id.toString() === selectedId
+          (emp: any) => emp.publicId === selectedPublicId
         );
         console.log("selectedEmployee", selectedEmployee);
         if (selectedEmployee) {
@@ -214,22 +220,27 @@ const ShopForm = () => {
       logger.form.submit("ShopForm", {
         ...submitData,
         // ownerId: values.ownerId || undefined,
-        managerId: values.managerId || undefined,
+        managerId: values.publicId || undefined,
         managerName: values.managerName || undefined,
       });
 
-      // Submit logic would go here
-      const res = await addShop({
-        ...submitData,
-        // ownerId: values.ownerId || undefined,
-        managerId: values.managerId || undefined,
-        managerName: values.managerName || undefined,
-      });
+      const res =
+        isEditing && id
+          ? await updateShop(id, {
+              ...submitData,
+              managerId: values.publicId || undefined,
+              managerName: values.managerName || undefined,
+            })
+          : await addShop({
+              ...submitData,
+              managerId: values.publicId || undefined,
+              managerName: values.managerName || undefined,
+            });
       logger.form.success(
         "ShopForm",
         `Shop "${values.name}" created successfully`
       );
-      console.log('res',res)
+      console.log("res", res);
       if (res) {
         toast({
           title: `Shop ${isEditing ? "Updated" : "Created"}`,
@@ -242,12 +253,12 @@ const ShopForm = () => {
 
       setSubmitting(false);
       resetForm();
-    } catch (error) {
+      navigate("/shops");
+    } catch (error: any) {
+      console.log("error",);
       toast({
-        title: "Error",
-        text: `Failed to ${
-          isEditing ? "update" : "create"
-        } shop. Please try again. Error: ${error.message}`,
+        title: "Error While Creating Shop",
+        text: `${error?.response?.data?.error || "something went wrong"}`,
         type: "error",
       });
     } finally {
@@ -255,6 +266,25 @@ const ShopForm = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!isEditing || !id) return;
+    try {
+      await deleteShop(id);
+      toast({
+        title: "Shop deleted",
+        text: "Shop removed successfully.",
+        type: "success",
+      });
+      navigate("/shops");
+    } catch (error) {
+      toast({
+        title: "Error",
+        text: `Failed to delete shop. ${error.message}`,
+        type: "error",
+      });
+    }
+  };
+  console.log("selectedManager", EmployeeData);
   return (
     <>
       <div>
@@ -282,7 +312,7 @@ const ShopForm = () => {
             <div className="grid gap-6 sm:grid-cols-2">
               <div className="space-y-4  section-card">
                 <h3 className="text-lg font-medium">Basic Information</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="name">Shop Name *</Label>
                     <Field
@@ -302,43 +332,25 @@ const ShopForm = () => {
                   </div>
 
                   <div className="grid gap-2">
-                    <Label htmlFor="location">Location</Label>
+                    <Label htmlFor="address">Full Address</Label>
                     <Field
-                      as={Input}
-                      id="location"
-                      name="location"
-                      placeholder="e.g., Downtown, Mall Area"
+                      as={Textarea}
+                      id="address"
+                      name="address"
+                      placeholder="Enter complete address"
+                      rows={3}
                       className={
-                        errors.location && touched.location
+                        errors.address && touched.address
                           ? "border-red-500"
                           : ""
                       }
                     />
                     <ErrorMessage
-                      name="location"
+                      name="address"
                       component="div"
                       className="text-red-500 text-sm"
                     />
                   </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="address">Full Address</Label>
-                  <Field
-                    as={Textarea}
-                    id="address"
-                    name="address"
-                    placeholder="Enter complete address"
-                    rows={3}
-                    className={
-                      errors.address && touched.address ? "border-red-500" : ""
-                    }
-                  />
-                  <ErrorMessage
-                    name="address"
-                    component="div"
-                    className="text-red-500 text-sm"
-                  />
                 </div>
               </div>
 
@@ -394,82 +406,34 @@ const ShopForm = () => {
 
                 {/* User Selection Info */}
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> {EmployeeData?.length || 0} user(s)
-                    available for selection. Users must be created first in the
-                    Employees section before they can be assigned as shop owners
-                    or managers.
+                  <p className="text-xs text-blue-800">
+                    <strong>Note:</strong>
+                    {EmployeeData.filter((i: any) => i.role === "Shop Owner")
+                      .length || 0}{" "}
+                    user(s) available for selection. Users must be created first
+                    in the Employees section before they can be assigned as shop
+                    owners or managers.
                   </p>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {/* <div className="grid gap-2">
-                    <Label htmlFor="ownerId">Shop Owner</Label>
-                    <Select
-                      value={values.ownerId}
-                      onValueChange={(value) => {
-                        setFieldValue("ownerId", value);
-                        // Auto-populate managerName when owner is selected (since they're the same)
-                        if (value && value !== "no-employees") {
-                          const selectedOwner = EmployeeData.find(
-                            (emp: any) => emp.id.toString() === value
-                          );
-                          if (selectedOwner) {
-                            setFieldValue("managerName", selectedOwner.name);
-                          }
-                        } else {
-                          setFieldValue("managerName", "");
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="ownerId">
-                        <SelectValue placeholder="Select owner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {console.log(
-                          "Rendering owner dropdown with EmployeeData:",
-                          EmployeeData
-                        )}
-                        {console.log(
-                          "Available roles:",
-                          EmployeeData?.map((emp) => emp.role)
-                        )}
-                        {EmployeeData && EmployeeData.length > 0 ? (
-                          EmployeeData.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.id}>
-                              {employee.name} ({employee.role || "no role"})
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="no-employees" disabled>
-                            No employees available
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <ErrorMessage
-                      name="ownerId"
-                      component="div"
-                      className="text-red-500 text-sm"
-                    />
-                  </div> */}
-
                   <div className="grid gap-2">
-                    <Label htmlFor="managerId">
+                    <Label htmlFor="publicId">
                       Shop Owner/Manager{" "}
                       <span className="text-xs text-gray-500">
-                        (only users with Role Shop Owner is visible here)
+                        (only users with Role "Shop Owner" are visible here)
                       </span>{" "}
                     </Label>
                     <Select
-                      value={values.managerId?.toString() || ""}
+                      value={values.publicId?.toString() || ""}
                       onValueChange={(value) => {
-                        setFieldValue("managerId", value);
+                        setFieldValue("publicId", value);
                         // Auto-populate managerName when manager is selected
                         if (value && value !== "no-employees") {
                           const selectedManager = EmployeeData.find(
-                            (emp: any) => emp.id.toString() === value
+                            (emp: any) => emp.publicId === value
                           );
+
                           if (selectedManager) {
                             setFieldValue("managerName", selectedManager.name);
                           }
@@ -478,8 +442,8 @@ const ShopForm = () => {
                         }
                       }}
                     >
-                      <SelectTrigger id="managerId">
-                        <SelectValue placeholder="Select manager" />
+                      <SelectTrigger id="publicId">
+                        <SelectValue placeholder="Select Shop Owner" />
                       </SelectTrigger>
                       <SelectContent>
                         {EmployeeData && EmployeeData.length > 0 ? (
@@ -488,20 +452,20 @@ const ShopForm = () => {
                           ).map((employee) => (
                             <SelectItem
                               key={employee.id}
-                              value={employee.id.toString()}
+                              value={employee.publicId}
                             >
                               {employee.name} ({employee.role || "no role"})
                             </SelectItem>
                           ))
                         ) : (
                           <SelectItem value="no-employees" disabled>
-                            No employees available
+                            No Shop Owner users available
                           </SelectItem>
                         )}
                       </SelectContent>
                     </Select>
                     <ErrorMessage
-                      name="managerId"
+                      name="publicId"
                       component="div"
                       className="text-red-500 text-sm"
                     />
@@ -640,6 +604,16 @@ const ShopForm = () => {
                   ? "Update Shop"
                   : "Create Shop"}
               </Button>
+              {isEditing && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isSubmitting}
+                  onClick={handleDelete}
+                >
+                  Delete
+                </Button>
+              )}
               <Button type="button" variant="outline" disabled={isSubmitting}>
                 Cancel
               </Button>

@@ -1,8 +1,8 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/ui/dashboard/layout";
-import { useAuth } from "./contexts/AuthContext"; 
+import { useAuth } from "./contexts/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import EmployeeForm from "./pages/employees/EmployeeForm";
 import EmployeeList from "./pages/employees/EmployeeList";
@@ -16,8 +16,19 @@ import ShopInventoryList from "./pages/ShopInventory/ShopInventoryList";
 import ShopForm from "./pages/shops/ShopForm";
 import ShopList from "./pages/shops/ShopList";
 import UnauthorizedAccess from "./pages/UnauthorizedAccess";
+import RestockManagement from "./pages/RestockManagement";
+import Notifications from "./pages/Notifications";
+import AuditLog from "./pages/AuditLog";
+import LowStockAlerts from "./pages/LowStockAlerts";
 import { usePermissions } from "./contexts/PermissionsContext";
- 
+
+// Loading Component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center min-h-screen">
+    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
+  </div>
+);
+
 // Types
 interface RoutePermission {
   module: string;
@@ -35,7 +46,7 @@ interface RouteConfig {
 interface RoleBasedRouteProps {
   children: React.ReactNode;
   requiredPermissions: RoutePermission[];
-  requireAll?: boolean;
+  requireAll?: boolean; 
 }
 
 const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
@@ -43,21 +54,45 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
   requiredPermissions,
   requireAll = false,
 }) => {
-  const { user } = useAuth();
-  const { hasAnyPermission, hasAllPermissions } = usePermissions();
+  const { user, isLoading: authLoading, isInitialized } = useAuth();
+  const {
+    hasAnyPermission,
+    hasAllPermissions,
+    isLoading: permissionsLoading,
+    userPermissions,
+  } = usePermissions();
 
-  console.log("Checking permissions for route:", requiredPermissions);
+  // Enhanced debugging
+  console.log("=== RoleBasedRoute Debug Info ===");
+  console.log("Required permissions:", requiredPermissions);
+  console.log("Auth loading:", authLoading);
+  console.log("Auth initialized:", isInitialized);
+  console.log("Permissions loading:", permissionsLoading);
+  console.log("User:", user);
+  console.log("User permissions:", userPermissions);
+  console.log("RequireAll:", requireAll);
 
-  if (!user) {
-    console.log("No user found, redirecting to NotFound");
-    return <NotFound />;
+  // Show loading while authentication or permissions are being fetched
+  if (authLoading || permissionsLoading || !isInitialized) {
+    console.log("Still loading - showing spinner");
+    return <LoadingSpinner />;
   }
 
-  const hasAccess = requireAll
-    ? hasAllPermissions(requiredPermissions)
-    : hasAnyPermission(requiredPermissions);
+  // If auth is complete but no user, redirect to login
+  if (!user) {
+    console.log("No user found after auth loading complete - redirecting to login");
+    return <Navigate to="/login" replace />;
+  }
 
-  console.log(`User has access: ${hasAccess} (requireAll: ${requireAll})`);
+  // Test the permission functions
+  const hasAccessAny = hasAnyPermission(requiredPermissions);
+  const hasAccessAll = hasAllPermissions(requiredPermissions);
+  const hasAccess = requireAll ? hasAccessAll : hasAccessAny;
+
+  console.log("hasAnyPermission result:", hasAccessAny);
+  console.log("hasAllPermissions result:", hasAccessAll);
+  console.log("Final hasAccess:", hasAccess);
+  console.log("=== End Debug Info ===");
 
   if (hasAccess) {
     return <>{children}</>;
@@ -72,7 +107,7 @@ const AppRoutes: React.FC = () => {
     {
       path: "/",
       element: <Dashboard />,
-      permissions: [{ module: "Home", action: "read" }],
+      permissions: [{ module: "Dashboard", action: "read" }],
     },
 
     // Inventory Routes
@@ -178,6 +213,34 @@ const AppRoutes: React.FC = () => {
         { module: "Shop Inventory", action: "update" },
       ],
       requireAll: true,
+    },
+
+    // Restock Management Routes (Admin Only)
+    {
+      path: "/restock-management",
+      element: <RestockManagement />,
+      permissions: [{ module: "Restock Management", action: "read" }],
+    },
+
+    // Notifications Route
+    {
+      path: "/notifications",
+      element: <Notifications />,
+      permissions: [{ module: "Notifications", action: "read" }],
+    },
+
+    // Audit Log Route
+    {
+      path: "/audit-log",
+      element: <AuditLog />,
+      permissions: [{ module: "Audit Log", action: "read" }],
+    },
+
+    // Low Stock Alerts Route
+    {
+      path: "/low-stock",
+      element: <LowStockAlerts />,
+      permissions: [{ module: "Low Stock Alerts", action: "read" }],
     },
   ];
 

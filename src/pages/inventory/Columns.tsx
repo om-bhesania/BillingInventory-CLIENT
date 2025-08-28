@@ -5,8 +5,8 @@ import { Link } from "react-router-dom";
 export const InvoiceColumns = (handleDelete: any) => {
   return [
     {
-      accessorKey: "id",
-      header: "ID",
+      accessorKey: "invoiceNumber",
+      header: "Invoice Number",
       Cell: ({ row }) => row.index + 1,
     },
     {

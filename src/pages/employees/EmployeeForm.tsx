@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "@/hooks/use-toast";
+import useToast  from "@/hooks/use-toast";
 import { Checkbox } from "@mui/material";
 import { useFormik } from "formik";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
@@ -41,7 +41,7 @@ const EmployeeForm = () => {
   const navigate = useNavigate();
   const isEditing = !!id;
   const [showPassword, setShowPassword] = useState(false);
-
+  const { toast } = useToast();
   // Generate random password function
   const generateRandomPassword = () => {
     const chars =

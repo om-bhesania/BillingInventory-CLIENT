@@ -30,6 +30,7 @@ interface AuthContextType {
   hasRole: (roleName: string) => boolean;
   hasAnyRole: (roleNames: string[]) => boolean;
   getUserShopId: () => string | undefined;
+  getUserShopIds: () => string[];
   isLoading: boolean;
   isInitialized: boolean;
 }
@@ -49,6 +50,8 @@ interface User {
     id: string;
     name: string;
   };
+  managedShops?: { id: string; name: string }[]; // New field for managed shops
+  publicId: string; // New field for public ID
   permissions: any; // Fixed typo: was "premissions"
 }
 
@@ -128,7 +131,15 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     return hasAccess;
   };
 
-  const getUserShopId = () => user?.ownedShop?.id || user?.managedShop?.id;
+  const getUserShopId = () => {
+    const managedShops = user?.managedShops || [];
+    return managedShops.length > 0 ? managedShops[0].id : undefined;
+  };
+
+  const getUserShopIds = () => {
+    return user?.managedShops?.map(shop => shop.id) || [];
+  };
+
   const normalizeRoleName = (roleName: string): string => {
     // Convert spaces to underscores and handle common variations
     return roleName
@@ -136,6 +147,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       .replace(/\s+/g, "_") // Replace spaces with underscores
       .toLowerCase(); // Make case-insensitive
   };
+
   // Comprehensive authentication verification
   const verifyUserAuthentication = async (userData: User, token: string) => {
     try {
@@ -152,7 +164,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         throw new Error("Invalid user data structure");
       }
 
-      // Enhanced role validation with normalization
+      // Enhanced role validation with normalization - BUT ONLY IF ROLES ARE LOADED
       if (roles.length > 0) {
         const normalizedUserRole = normalizeRoleName(userData.role);
         const availableRoleNames = roles.map((role) =>
@@ -177,6 +189,9 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         console.log("Role validation passed for:", userData.role);
+      } else {
+        // If roles aren't loaded yet, skip validation - we'll validate later
+        console.log("Roles not loaded yet, skipping role validation");
       }
 
       return true;
@@ -186,34 +201,34 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Fetch roles on app load
+  // Load roles - separate from auth initialization
   useEffect(() => {
     const loadRoles = async () => {
       try {
-        setIsLoading(true);
         const rolesData: any = await fetchRoles();
         setRoles(rolesData);
         logger.data.success("roles", `Loaded ${rolesData.length} roles`);
-        return rolesData;
       } catch (error) {
         logger.data.error("roles", error);
-        return [];
+        setRoles([]); // Set empty array on error so we don't block forever
       }
     };
 
     loadRoles();
   }, []);
 
-  // Enhanced authentication check on app load
+  // Initialize authentication - INDEPENDENT of roles loading
   useEffect(() => {
     const initializeAuth = async () => {
       try {
         setIsLoading(true);
+        console.log("Initializing auth...");
 
         const token = sessionStorage.getItem("auth_token");
         const userData = sessionStorage.getItem("user_data");
 
         if (!token || !userData) {
+          console.log("No token or user data found");
           setIsAuthenticated(false);
           setUser(null);
           setIsInitialized(true);
@@ -223,6 +238,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Check token expiry
         if (isTokenExpired(token)) {
+          console.log("Token expired, attempting refresh...");
           try {
             const response = await fetch("/api/auth/refresh", {
               method: "POST",
@@ -237,12 +253,13 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
                 JSON.stringify(refreshData.user)
               );
 
-              // Verify the refreshed user data
+              // Verify the refreshed user data (roles validation will be skipped if not loaded)
               const isValid = await verifyUserAuthentication(
                 refreshData.user,
                 refreshData.token
               );
               if (isValid) {
+                console.log("Token refresh successful");
                 setIsAuthenticated(true);
                 setUser(refreshData.user);
               } else {
@@ -252,44 +269,43 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
               throw new Error("Token refresh failed");
             }
           } catch (refreshError) {
+            console.log("Token refresh failed:", refreshError);
             sessionStorage.removeItem("auth_token");
             sessionStorage.removeItem("user_data");
             setIsAuthenticated(false);
             setUser(null);
           }
         } else {
-          // Token is valid, verify user data
+          // Token is valid, verify user data (roles validation will be skipped if not loaded)
+          console.log("Token valid, verifying user data...");
           const parsedUserData = JSON.parse(userData);
           const isValid = await verifyUserAuthentication(parsedUserData, token);
 
           if (isValid) {
+            console.log("User data verification successful");
             setIsAuthenticated(true);
             setUser(parsedUserData);
+          } else {
+            console.log("User data verification failed");
+            setIsAuthenticated(false);
+            setUser(null);
           }
         }
       } catch (error) {
+        console.error("Auth initialization error:", error);
         sessionStorage.removeItem("auth_token");
         sessionStorage.removeItem("user_data");
         setIsAuthenticated(false);
         setUser(null);
       } finally {
+        console.log("Auth initialization complete");
         setIsInitialized(true);
         setIsLoading(false);
       }
     };
 
-    // Only initialize after roles are available or after a reasonable timeout
-    if (roles.length > 0) {
-      initializeAuth();
-    } else {
-      // Fallback timeout to prevent infinite loading
-      const timeoutId = setTimeout(() => {
-        initializeAuth();
-      }, 5000);
-
-      return () => clearTimeout(timeoutId);
-    }
-  }, [roles]);
+    initializeAuth();
+  }, []); // Remove roles dependency
 
   // Proactive token expiry check
   useEffect(() => {
@@ -358,7 +374,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       logger.auth.login(`Attempting login for ${email}`);
 
       const response = await loginApi(email, password);
-      console.log("Login API response:", response); // Add debugging
+      console.log("Login API response:", response);
 
       const { token, user }: any = response;
 
@@ -369,7 +385,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         );
       }
 
-      // Verify user data before setting state
+      // Verify user data before setting state (roles validation will be skipped if not loaded)
       const isValid = await verifyUserAuthentication(user, token);
       if (!isValid) {
         throw new Error("Invalid user data received from login");
@@ -403,7 +419,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       }, 100);
     } catch (error) {
       setIsLoading(false);
-      console.error("Login error details:", error); // Enhanced error logging
+      console.error("Login error details:", error);
       logger.auth.login(`Login failed for ${email}`, error);
       throw error;
     }
@@ -458,6 +474,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         hasRole,
         hasAnyRole: hasAnyRoleCheck,
         getUserShopId,
+        getUserShopIds,
         isLoading,
         isInitialized,
       }}

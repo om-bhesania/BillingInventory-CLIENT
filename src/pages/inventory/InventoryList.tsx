@@ -2,7 +2,7 @@ import { deleteProduct, getProducts } from "@/apis/productapis";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import Table from "@/components/ui/table";
-import { toast } from "@/hooks/use-toast";
+import useToast  from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -11,7 +11,7 @@ import { InvoiceColumns } from "./Columns";
 const InventoryList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [inventory, setInventory] = useState([]);
-
+  const { toast } = useToast();
   const fetchProductsData = async () => {
     try {
       const response: any = await getProducts();

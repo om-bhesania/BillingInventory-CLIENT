@@ -13,6 +13,8 @@ import {
   EyeIcon,
   LogOut,
   Menu,
+  FileText,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,7 +38,7 @@ const Sidebar: React.FC = () => {
   }>({});
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { hasPermission, isModuleAccessible } = usePermissions();
 
   // Navigation with permissions info
@@ -45,7 +47,7 @@ const Sidebar: React.FC = () => {
       title: "Dashboard",
       href: "/",
       icon: HomeIcon,
-      module: "Home",
+      module: "Dashboard",
       requiredActions: ["read"],
     },
     {
@@ -158,6 +160,37 @@ const Sidebar: React.FC = () => {
         },
       ],
     },
+
+    {
+      title: "Restock Management",
+      icon: PackageIcon,
+      module: "Restock Management",
+      requiredActions: ["read"],
+      children: [
+        {
+          title: "Manage Requests",
+          href: "/restock-management",
+          icon: EyeIcon,
+          module: "Restock Management",
+          requiredActions: ["read"],
+        },
+        {
+          title: "Low Stock Alerts",
+          icon: AlertTriangle,
+          href: "/low-stock",
+          module: "Low Stock Alerts",
+          requiredActions: ["read"],
+        },
+      ],
+    },
+
+    // {
+    //   title: "Audit Log",
+    //   icon: FileText,
+    //   href: "/audit-log",
+    //   module: "Audit Log",
+    //   requiredActions: ["read"],
+    // },
   ];
 
   // Check if user has all required actions for item
@@ -267,7 +300,6 @@ const Sidebar: React.FC = () => {
       ))}
     </div>
   );
-
   return (
     <>
       <div className="hidden h-screen w-64 flex-col border-r bg-background p-4 md:flex">
@@ -281,7 +313,7 @@ const Sidebar: React.FC = () => {
           <Button
             variant="ghost"
             className="w-full flex items-center justify-start"
-            onClick={() => {}}
+            onClick={logout}
           >
             <LogOut className="h-4 w-4 mr-2" />
             <span>Log out</span>

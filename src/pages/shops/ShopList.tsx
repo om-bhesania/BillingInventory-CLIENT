@@ -1,4 +1,4 @@
-import { getShop } from "@/apis/shopapi";
+import { deleteShop, getShop, updateShop } from "@/apis/shopapi";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import Table from "@/components/ui/table";
@@ -61,9 +61,9 @@ const ShopList = () => {
       console.error("Error details:", {
         message: error.message,
         status: error.response?.status,
-        data: error.response?.data
+        data: error.response?.data,
       });
-      
+
       setError("Failed to load shop data. Please try again.");
       setShopData([]);
     } finally {
@@ -76,7 +76,8 @@ const ShopList = () => {
       fetchShopData();
     }
   }, [isAuthenticated]);
-
+  
+  // Remove console.log to prevent unnecessary re-renders
   const filteredShops = shopData.filter(
     (shop) =>
       shop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -84,44 +85,33 @@ const ShopList = () => {
       shop.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       shop.manager.toLowerCase().includes(searchTerm.toLowerCase())
   );
-console.log("shopData", shopData);
+ 
   const handleDelete = (id: string) => {
     setShops(shops.filter((shop) => shop.id !== id));
   };
-
-  const columns = useMemo<MRT_ColumnDef<Shop>[]>(
-    () => [
-      {
-        accessorKey: "id",
-        header: "ID",
-      },
-      {
-        accessorKey: "name",
-        header: "Shop Name",
-      },
-      {
-        accessorKey: "location",
-        header: "Location",
-      },
-      {
-        accessorKey: "manager",
-        header: "Manager",
-      },
-      {
-        accessorKey: "contact",
-        header: "Contact",
-      },
-      {
-        accessorKey: "employeeCount",
-        header: "Employees",
-      },
-      {
-        accessorKey: "monthlyRevenue",
-        header: "Monthly Revenue (₹)",
-      },
-    ],
-    [handleDelete]
-  );
+  useEffect(() => {
+    const onEdit = (e: any) => {
+      const id = e?.detail?.id;
+      if (!id) return;
+      navigate(`/shops/add?id=${id}`);
+    };
+    const onDelete = async (e: any) => {
+      const id = e?.detail?.id;
+      if (!id) return;
+      try {
+        await deleteShop(id);
+        fetchShopData();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    window.addEventListener("shop:edit", onEdit as any);
+    window.addEventListener("shop:delete", onDelete as any);
+    return () => {
+      window.removeEventListener("shop:edit", onEdit as any);
+      window.removeEventListener("shop:delete", onDelete as any);
+    };
+  }, [navigate, fetchShopData]); // Add proper dependencies
 
   return (
     <>
@@ -157,9 +147,9 @@ console.log("shopData", shopData);
         {error && (
           <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-md">
             <p className="text-red-800">{error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="mt-2"
               onClick={fetchShopData}
             >

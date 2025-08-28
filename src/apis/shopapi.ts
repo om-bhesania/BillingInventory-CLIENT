@@ -17,3 +17,28 @@ export const getShop = async () => {
   });
   return response;
 };
+
+export const getShopById = async (id: string) => {
+  const response = await service({
+    url: API_URL.shop.byId(id),
+    method: "GET",
+  });
+  return response;
+};
+
+export const updateShop = async (id: string, data: any) => {
+  const response = await service({
+    url: API_URL.shop.byId(id),
+    method: "PUT",
+    data,
+  });
+  return response;
+};
+
+export const deleteShop = async (id: string) => {
+  const response = await service({
+    url: API_URL.shop.byId(id),
+    method: "DELETE",
+  });
+  return response;
+};
