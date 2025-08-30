@@ -1,4 +1,5 @@
-const baseUrl = import.meta.env.VITE_API_URL;
+const baseUrl =
+  import.meta.env.VITE_API_URL || "https://s3l06km6-5000.inc1.devtunnels.ms/";
 
 export const API_URL = {
   base: baseUrl,

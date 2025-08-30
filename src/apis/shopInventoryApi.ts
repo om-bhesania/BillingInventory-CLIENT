@@ -30,6 +30,20 @@ export interface CreateShopInventoryRequest {
   shopId: string;
   productId: string;
   currentStock?: number;
+  minStockPerItem?: number;
+  lowStockAlertsEnabled?: boolean;
+}
+
+export interface BulkCreateShopInventoryRequestItem {
+  productId: string;
+  currentStock?: number;
+  minStockPerItem?: number;
+  lowStockAlertsEnabled?: boolean;
+}
+
+export interface BulkCreateShopInventoryRequest {
+  shopId: string;
+  items: BulkCreateShopInventoryRequestItem[];
 }
 
 export interface UpdateStockRequest {
@@ -38,6 +52,16 @@ export interface UpdateStockRequest {
 
 // Create shop inventory entry
 export const createShopInventory = async (data: CreateShopInventoryRequest): Promise<ShopInventoryItem> => {
+  const response = await service({
+    url: API_URL.shopInventory.create,
+    method: "POST",
+    data,
+  });
+  // @ts-ignore
+  return response;
+};
+
+export const bulkCreateShopInventory = async (data: BulkCreateShopInventoryRequest): Promise<{ createdCount: number; items: ShopInventoryItem[] }> => {
   const response = await service({
     url: API_URL.shopInventory.create,
     method: "POST",

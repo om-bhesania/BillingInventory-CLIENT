@@ -121,12 +121,12 @@ const Dashboard = () => {
   // Initial data fetch - only runs once
   useEffect(() => {
     fetchDashboardData();
-    
+
     // Cleanup function to prevent memory leaks
     return () => {
       isMounted.current = false;
     };
-  }, [fetchDashboardData]); // Only depend on the memoized function
+  }, [fetchDashboardData, dateRange]); // Only depend on the memoized function
 
   // Function to handle manual refresh with rate limiting
   const handleManualRefresh = useCallback(async () => {

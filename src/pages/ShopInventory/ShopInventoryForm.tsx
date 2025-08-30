@@ -25,6 +25,7 @@ import {
   ShopInventoryItem,
   CreateShopInventoryRequest,
   UpdateStockRequest,
+  bulkCreateShopInventory,
 } from "@/apis/shopInventoryApi";
 import { getProducts } from "@/apis/productapis";
 import useToast from "@/hooks/use-toast";
@@ -32,8 +33,21 @@ import { getShop } from "@/apis/shopapi";
 import { usePingUser } from "@/hooks/use-pingUser";
 
 const shopInventorySchema = z.object({
+  shopId: z.string().optional(),
   productId: z.string().min(1, "Product is required"),
   currentStock: z.number().min(0, "Stock must be non-negative"),
+  minStockPerItem: z
+    .number({ invalid_type_error: "Enter a valid number" })
+    .min(0, "Min stock must be >= 0")
+    .optional(),
+  lowStockAlertsEnabled: z.boolean().optional(),
+});
+
+const bulkItemSchema = z.object({
+  productId: z.string().min(1),
+  currentStock: z.number().min(0).default(0),
+  minStockPerItem: z.number().min(0).optional(),
+  lowStockAlertsEnabled: z.boolean().optional(),
 });
 
 type ShopInventoryFormData = z.infer<typeof shopInventorySchema>;
@@ -63,6 +77,12 @@ function ShopInventoryForm({
 }: ShopInventoryFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
+  const [itemRows, setItemRows] = useState<Array<{
+    productId: string;
+    currentStock: number;
+    minStockPerItem?: number;
+    lowStockAlertsEnabled?: boolean;
+  }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { user } = usePingUser();
@@ -71,7 +91,7 @@ function ShopInventoryForm({
   const userShopIds = user?.managedShops?.map((shop) => shop.id) || [];
 
   // For Shop Owner role, automatically use their assigned shop
-  const isShopOwner = user?.role === "Shop Owner";
+  const isShopOwner = user?.role === "Shop_Owner" || user?.role === "Shop Owner";
   const autoSelectedShopId =
     isShopOwner && userShopIds.length > 0 ? userShopIds[0] : "";
 
@@ -84,16 +104,15 @@ function ShopInventoryForm({
   } = useForm<ShopInventoryFormData>({
     resolver: zodResolver(shopInventorySchema),
     defaultValues: {
-      // shopId:
-      //   inventoryItem?.shopId ||
-      //   autoSelectedShopId ||
-      //   user?.managedShops.map((shop) => shop.id)[0],
+      shopId: inventoryItem?.shopId || autoSelectedShopId || "",
       productId: inventoryItem?.productId || "",
       currentStock: inventoryItem?.currentStock || 0,
+      minStockPerItem: undefined,
+      lowStockAlertsEnabled: true,
     },
   });
 
-  // const watchedShopId = watch("shopId");
+  const watchedShopId = watch("shopId");
   const watchedProductId = watch("productId");
   const fetchData = async () => {
     try {
@@ -122,6 +141,27 @@ function ShopInventoryForm({
   const onSubmit = async (data: ShopInventoryFormData) => {
     setIsLoading(true);
     try {
+      // If user added multiple items rows, call bulk create
+      const targetShopId = isShopOwner ? (autoSelectedShopId || userShopIds[0]) : (data.shopId || watchedShopId);
+      console.log("Target shop ID:", targetShopId, "Item rows:", itemRows.length);
+      if (!inventoryItem && itemRows.length > 0) {
+        const cleaned = itemRows
+          .filter((r) => r.productId)
+          .map((r) => ({
+            productId: r.productId,
+            currentStock: Number(r.currentStock) || 0,
+            minStockPerItem: typeof r.minStockPerItem === "number" ? r.minStockPerItem : undefined,
+            lowStockAlertsEnabled: typeof r.lowStockAlertsEnabled === "boolean" ? r.lowStockAlertsEnabled : true,
+          }));
+        console.log("Cleaned items:", cleaned);
+        if (cleaned.length > 0 && targetShopId) {
+          console.log("Calling bulk create with:", { shopId: targetShopId, items: cleaned });
+          await bulkCreateShopInventory({ shopId: targetShopId as string, items: cleaned });
+          toast({ title: "Success", text: `Added ${cleaned.length} items to inventory`, type: "success" });
+          onSuccess?.();
+          return;
+        }
+      }
       if (inventoryItem) {
         // Update existing inventory
         const updateData: UpdateStockRequest = {
@@ -136,9 +176,15 @@ function ShopInventoryForm({
       } else {
         // Create new inventory
         const createData: CreateShopInventoryRequest = {
-          shopId: user?.managedShops.map((shop) => shop.id)[0],
+          shopId: targetShopId as string,
           productId: data.productId,
           currentStock: data.currentStock,
+          minStockPerItem:
+            typeof data.minStockPerItem === "number" ? data.minStockPerItem : undefined,
+          lowStockAlertsEnabled:
+            typeof data.lowStockAlertsEnabled === "boolean"
+              ? data.lowStockAlertsEnabled
+              : true,
         };
         await createShopInventory(createData);
         toast({
@@ -180,6 +226,31 @@ function ShopInventoryForm({
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Shop selection for Admin / non-shop-owner */}
+            {!isShopOwner && (
+              <div className="space-y-2">
+                <Label htmlFor="shopId">Shop</Label>
+                <Select
+                  value={watchedShopId}
+                  onValueChange={(value) => setValue("shopId", value)}
+                  disabled={!!inventoryItem}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a shop" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shops.map((shop) => (
+                      <SelectItem key={shop.id} value={shop.id}>
+                        {shop.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.shopId && (
+                  <p className="text-sm text-red-500">{errors.shopId.message as any}</p>
+                )}
+              </div>
+            )}
             {/* <div className="space-y-2">
               <Label htmlFor="shopId">Shop</Label>
               {isShopOwner && autoSelectedShopId ? (
@@ -258,6 +329,131 @@ function ShopInventoryForm({
               )}
             </div>
           </div>
+
+          {/* Min stock and alerts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="minStockPerItem">Min stock per item (shop)</Label>
+              <Input
+                id="minStockPerItem"
+                type="number"
+                min="0"
+                {...register("minStockPerItem", { valueAsNumber: true })}
+                placeholder="e.g., 20"
+              />
+              {errors.minStockPerItem && (
+                <p className="text-sm text-red-500">{errors.minStockPerItem.message as any}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-3 mt-6">
+              <input
+                id="lowStockAlertsEnabled"
+                type="checkbox"
+                className="h-4 w-4"
+                {...register("lowStockAlertsEnabled")}
+                defaultChecked
+              />
+              <Label htmlFor="lowStockAlertsEnabled">Enable low stock alerts</Label>
+            </div>
+          </div>
+
+          {/* Add New Items (multi-add like billing) */}
+          {!inventoryItem && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Add New Items</h4>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    setItemRows((rows) => [
+                      ...rows,
+                      {
+                        productId: "",
+                        currentStock: 0,
+                        minStockPerItem: undefined,
+                        lowStockAlertsEnabled: true,
+                      },
+                    ])
+                  }
+                >
+                  Add Item
+                </Button>
+              </div>
+              {itemRows.length > 0 && (
+                <div className="space-y-3">
+                  {itemRows.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                      <div>
+                        <Label>Product</Label>
+                        <Select
+                          value={row.productId}
+                          onValueChange={(value) =>
+                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, productId: value } : r)))
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select product" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name} ({p.sku})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Amount</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={row.currentStock}
+                          onChange={(e) =>
+                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, currentStock: Number(e.target.value) || 0 } : r)))
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                      <div>
+                        <Label>Min stock</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={row.minStockPerItem ?? ""}
+                          onChange={(e) =>
+                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, minStockPerItem: e.target.value === "" ? undefined : Number(e.target.value) } : r)))
+                          }
+                          placeholder="optional"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={row.lowStockAlertsEnabled !== false}
+                          onChange={(e) =>
+                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, lowStockAlertsEnabled: e.target.checked } : r)))
+                          }
+                        />
+                        <Label>Alerts</Label>
+                      </div>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setItemRows((rows) => rows.filter((_, i) => i !== idx))}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Display selected product and shop info */}
           {selectedProduct && (
