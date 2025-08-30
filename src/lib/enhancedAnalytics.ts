@@ -495,7 +495,8 @@ export const generateRoleBasedInsights = (
     // Admin-specific insights
     const adminInsights: BusinessInsight[] = [];
 
-    if (metrics.shopPerformance) {
+    // Check if shopPerformance exists and has data before processing
+    if (metrics.shopPerformance && metrics.shopPerformance.length > 0) {
       const topShop = metrics.shopPerformance.reduce((best, current) =>
         current.totalRevenue > best.totalRevenue ? current : best
       );
@@ -530,19 +531,19 @@ export const generateRoleBasedInsights = (
       }
     }
 
-    if (metrics.pendingRestockRequests) {
-      if (metrics.pendingRestockRequests.count > 10) {
-        adminInsights.push({
-          type: "warning",
-          priority: "medium",
-          title: "High Restock Request Volume",
-          description: `${metrics.pendingRestockRequests.count} pending restock requests`,
-          impact: "Potential delays in shop operations",
-          action:
-            "Prioritize high-demand items and optimize fulfillment process",
-          data: metrics.pendingRestockRequests,
-        });
-      }
+    if (
+      metrics.pendingRestockRequests &&
+      metrics.pendingRestockRequests.count > 10
+    ) {
+      adminInsights.push({
+        type: "warning",
+        priority: "medium",
+        title: "High Restock Request Volume",
+        description: `${metrics.pendingRestockRequests.count} pending restock requests`,
+        impact: "Potential delays in shop operations",
+        action: "Prioritize high-demand items and optimize fulfillment process",
+        data: metrics.pendingRestockRequests,
+      });
     }
 
     return [...baseInsights, ...adminInsights];
@@ -551,7 +552,10 @@ export const generateRoleBasedInsights = (
     const shopOwnerInsights: BusinessInsight[] = [];
 
     // Add inventory optimization insights
-    if (metrics.currentStockLevels) {
+    if (
+      metrics.currentStockLevels &&
+      metrics.currentStockLevels.lowStockItems
+    ) {
       const lowStockItems = metrics.currentStockLevels.lowStockItems || [];
       if (lowStockItems.length > 0) {
         shopOwnerInsights.push({
@@ -570,7 +574,7 @@ export const generateRoleBasedInsights = (
     // Add customer behavior insights
     if (metrics.shopRevenue && metrics.shopRevenue.count) {
       const aov = calculateAverageOrderValue(metrics);
-      if (aov && aov.trend.direction === "up") {
+      if (aov && aov.trend && aov.trend.direction === "up") {
         shopOwnerInsights.push({
           type: "opportunity",
           priority: "medium",
