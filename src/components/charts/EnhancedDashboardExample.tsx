@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EnhancedAnalyticsDashboard } from './EnhancedAnalyticsDashboard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,12 +12,18 @@ import {
   TrendingUp,
   AlertTriangle
 } from 'lucide-react';
+import { getDashboardMetrics, getRecentActivities, DashboardMetrics } from '@/apis/dashboardApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 export const EnhancedDashboardExample: React.FC = () => {
+  const { user } = useAuth();
   const [currentRole, setCurrentRole] = useState<'Admin' | 'Shop_Owner'>('Shop_Owner');
-  const [useMockData, setUseMockData] = useState(true);
+  const [useMockData, setUseMockData] = useState(false);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Mock data for demonstration
+  // Mock data for demonstration (fallback)
   const mockMetrics = {
     // Admin metrics
     totalRevenue: {
@@ -168,11 +174,47 @@ export const EnhancedDashboardExample: React.FC = () => {
       { flavor: 'Vanilla', quantity: 680, previousQuantity: 620, growth: 9.7 },
       { flavor: 'Strawberry', quantity: 520, previousQuantity: 480, growth: 8.3 }
     ],
-    salesTrend: Array.from({ length: 30 }, (_, i) => ({
-      date: new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      total: Math.floor(Math.random() * 20000) + 8000
-    }))
+    salesTrend: Array.from({ length: 30 }, (_, i) => {
+      const date = new Date(Date.now() - (29 - i) * 24 * 60 * 60 * 1000);
+      // Generate more realistic sales data with some pattern
+      const baseValue = 12000;
+      const dayOfWeek = date.getDay();
+      const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 1.3 : 1.0;
+      const randomVariation = (Math.random() - 0.5) * 0.4; // ±20% variation
+      const total = Math.floor(baseValue * weekendMultiplier * (1 + randomVariation));
+      
+      return {
+        date: date.toISOString().split('T')[0],
+        total: total,
+        orders: Math.floor(total / 150), // Assume average order value of 150
+        averageOrder: 150
+      };
+    })
   };
+
+  // Load dashboard data
+  const loadDashboardData = async () => {
+    if (useMockData) return;
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const dashboardData = await getDashboardMetrics();
+      setMetrics(dashboardData);
+      setCurrentRole(dashboardData.role);
+    } catch (err) {
+      console.error('Error loading dashboard data:', err);
+      setError('Failed to load dashboard data. Using mock data instead.');
+      setUseMockData(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [useMockData]);
 
   const handleRoleSwitch = (role: 'Admin' | 'Shop_Owner') => {
     setCurrentRole(role);
@@ -304,11 +346,22 @@ export const EnhancedDashboardExample: React.FC = () => {
         </div>
 
         {/* Enhanced Dashboard */}
-        <EnhancedAnalyticsDashboard
-          metrics={mockMetrics}
-          role={currentRole}
-          useMockData={useMockData}
-        />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="ml-2">Loading dashboard data...</span>
+          </div>
+        ) : error ? (
+          <div className="p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-yellow-800">{error}</p>
+          </div>
+        ) : (
+          <EnhancedAnalyticsDashboard
+            metrics={metrics || mockMetrics}
+            role={currentRole}
+            useMockData={useMockData}
+          />
+        )}
 
         {/* Usage Instructions */}
         <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">

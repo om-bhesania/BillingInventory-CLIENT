@@ -7,9 +7,13 @@ import { Plus } from "lucide-react";
 import { MRT_ColumnDef } from "material-react-table";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { shopColumns } from "./Columns";
+import { createShopColumns } from "./Columns";
+import { Toast } from "@/components/ui/toast";
+import Swal from "sweetalert2";
+import { toast } from "sonner";
+import useToast from "@/hooks/use-toast";
 
-// Mock shops data
+// Mock shops data (fallback)
 const mockShops = Array.from({ length: 8 }).map((_, i) => ({
   id: `SHP${100 + i}`,
   name: `Shop ${String.fromCharCode(65 + i)}`,
@@ -39,6 +43,7 @@ const ShopList = () => {
   const [shopData, setShopData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { toast } = useToast();
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -64,19 +69,25 @@ const ShopList = () => {
         data: error.response?.data,
       });
 
-      setError("Failed to load shop data. Please try again.");
-      setShopData([]);
+      setError("Failed to load shop data. Using mock data instead.");
+      setShopData(mockShops);
     } finally {
       setLoading(false);
     }
   };
+
+  // Create columns with refresh callback
+  const shopColumns = useMemo(
+    () => createShopColumns(fetchShopData),
+    [fetchShopData]
+  );
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchShopData();
     }
   }, [isAuthenticated]);
-  
+
   // Remove console.log to prevent unnecessary re-renders
   const filteredShops = shopData.filter(
     (shop) =>
@@ -85,7 +96,7 @@ const ShopList = () => {
       shop.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       shop.manager.toLowerCase().includes(searchTerm.toLowerCase())
   );
- 
+
   const handleDelete = (id: string) => {
     setShops(shops.filter((shop) => shop.id !== id));
   };
@@ -102,7 +113,11 @@ const ShopList = () => {
         await deleteShop(id);
         fetchShopData();
       } catch (err) {
-        console.error(err);
+        toast({
+          title: "Something went wrong",
+          text: err?.response?.data?.error.toString(),
+          type: "error",
+        });
       }
     };
     window.addEventListener("shop:edit", onEdit as any);
@@ -114,57 +129,53 @@ const ShopList = () => {
   }, [navigate, fetchShopData]); // Add proper dependencies
 
   return (
-    <>
-      <div>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Shop Management
-            </h1>
-            <p className="text-muted-foreground">
-              Manage all your ice cream shops
-            </p>
+    <div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Shop Management</h1>
+          <p className="text-muted-foreground">
+            Manage all your ice cream shops
+          </p>
+        </div>
+        <Link to="/shops/add">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" /> Add New Shop
+          </Button>
+        </Link>
+      </div>
+
+      <Separator className="my-6" />
+
+      {/* Loading and Error States */}
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading shops...</p>
           </div>
-          <Button asChild>
-            <Link to="/shops/add">
-              <Plus className="mr-2 h-4 w-4" /> Add New Shop
-            </Link>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-md">
+          <p className="text-red-800">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={fetchShopData}
+          >
+            Retry
           </Button>
         </div>
+      )}
 
-        <Separator className="my-6" />
-
-        {/* Loading and Error States */}
-        {loading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p className="text-muted-foreground">Loading shops...</p>
-            </div>
-          </div>
+      <div className="mt-6">
+        {!loading && !error && (
+          <Table columns={shopColumns} data={filteredShops} />
         )}
-
-        {error && (
-          <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-800">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={fetchShopData}
-            >
-              Retry
-            </Button>
-          </div>
-        )}
-
-        <div className="mt-6">
-          {!loading && !error && (
-            <Table columns={shopColumns} data={filteredShops} />
-          )}
-        </div>
       </div>
-    </>
+    </div>
   );
 };
 

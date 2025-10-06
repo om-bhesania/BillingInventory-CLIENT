@@ -1,5 +1,7 @@
 const baseUrl =
-  import.meta.env.VITE_API_URL || "https://s3l06km6-5000.inc1.devtunnels.ms/";
+  import.meta.env.VITE_API_URL ||
+  "http://localhost:5000" ||
+  "https://s3l06km6-5000.inc1.devtunnels.ms/api";
 
 export const API_URL = {
   base: baseUrl,
@@ -7,6 +9,7 @@ export const API_URL = {
     login: "/auth/login",
     register: "/auth/register",
     logout: "/auth/logout",
+    refresh: "/auth/refresh",
   },
   ping: {
     user: "/ping/user",
@@ -24,10 +27,14 @@ export const API_URL = {
     add: "/shops/add-shop",
     getAll: "/shops/get-all-shops",
     byId: (id: string) => `/shops/${id}`,
+    linkManager: (id: string) => `/shops/${id}/link-manager`,
+    unlinkManager: (id: string) => `/shops/${id}/unlink-manager`,
+    deleteAllData: (id: string) => `/shops/${id}/delete-all-data`,
   },
   shopInventory: {
     create: "/shop-inventory",
     getByShopId: (shopId: string) => `/shop-inventory/${shopId}`,
+    getById: (id: string) => `/shop-inventory/item/${id}`,
     updateStock: (id: string) => `/shop-inventory/${id}/stock`,
     remove: (id: string) => `/shop-inventory/${id}`,
   },
@@ -55,7 +62,7 @@ export const API_URL = {
     delete: (id: string) => `/packaging-types/${id}`,
   },
   employee: {
-    getAll: "/auth/users",
+    getAll: "/employees",
   },
   role: {
     add: "/role/add",
@@ -85,7 +92,35 @@ export const API_URL = {
     create: "/billing",
     byShopId: (shopId: string) => `/billing/${shopId}`,
     byId: (id: string) => `/billing/billing/${id}`,
-    updatePaymentStatus: (id: string) => `/billing/billing/${id}/payment-status`,
+    updatePaymentStatus: (id: string) =>
+      `/billing/billing/${id}/payment-status`,
     stats: (shopId: string) => `/billing/${shopId}/stats`,
+  },
+  chat: {
+    messages: (room: string) => `/chat/messages/${room}`,
+    send: "/chat/send",
+    rooms: "/chat/rooms",
+    read: (room: string) => `/chat/read/${room}`,
+    unreadCount: "/chat/unread-count",
+  },
+  chatRequests: {
+    create: "/chat-requests",
+    list: "/chat-requests",
+    details: "/chat-requests",
+    assign: "/chat-requests",
+    close: "/chat-requests",
+    delete: "/chat-requests",
+  },
+  stockAdjustments: {
+    create: "/stock-adjustments",
+    list: "/stock-adjustments",
+    details: "/stock-adjustments",
+    updateStatus: "/stock-adjustments",
+    defaultReasons: "/stock-adjustments/reasons/default",
+  },
+  payments: {
+    uploadReceipt: "/payments/receipt",
+    verifyPayment: "/payments/verify",
+    getPaymentDetails: "/payments",
   },
 };

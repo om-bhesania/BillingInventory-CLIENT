@@ -1,5 +1,5 @@
 import { registerApi } from "@/apis/auth";
-import { getRole } from "@/apis/employeeapi";
+import { getRole, getEmployeeById, updateEmployee } from "@/apis/employeeapi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import useToast  from "@/hooks/use-toast";
+import useToast from "@/hooks/use-toast";
 import { Checkbox } from "@mui/material";
 import { useFormik } from "formik";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
@@ -62,49 +62,103 @@ const EmployeeForm = () => {
     }
   };
 
+  const fetchEmployeeData = async () => {
+    try {
+      const employeeId = id?.replace("id=", "");
+      const employee: any = await getEmployeeById(employeeId!);
+
+      if (employee) {
+        // Update formik values with fetched employee data
+        formik.setValues({
+          name: employee.name || "",
+          email: employee.email || "",
+          contact: employee.contact || "",
+          password: "", // Don't pre-fill password for security
+          roleId: employee.roleId || "",
+          role: employee.role || [],
+          roleName: employee.role || "",
+          isActive: employee.isActive !== undefined ? employee.isActive : true,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching employee data:", error);
+      toast({
+        title: "Error",
+        text: "Failed to load employee data",
+        type: "error",
+      });
+    }
+  };
+
   useEffect(() => {
     fetchRoleData();
-  }, []);
-  const formatedRoles = roleData.map((role: any) => ({
-    id: role.id,
-    name:
-      role.name === "Show_Owner" ? "Show Owner" : role.name.replace(/_/g, " "),
-  }));
+    if (isEditing) {
+      fetchEmployeeData();
+    }
+  }, [isEditing]);
+  const formatedRoles = roleData
+    .filter((role: any) => role.name !== "Super_Admin" && role.name !== "Super Admin")
+    .map((role: any) => ({
+      id: role.id,
+      name:
+        role.name === "Show_Owner" ? "Show Owner" : role.name.replace(/_/g, " "),
+    }));
   const formik = useFormik({
     enableReinitialize: true,
     initialValues: {
-      name: isEditing ? "John Doe" : "",
-      email: isEditing ? "john.doe@iceberg.com" : "",
-      contact: isEditing ? "+91 9876543210" : "",
-      password: isEditing ? "existingpassword" : "",
-      roleId: isEditing ? "1" : "",
-      role: isEditing ? [] : [],
-      roleName: isEditing ? "Show Owner" : "",
-      isActive: isEditing ? true : true,
+      name: "",
+      email: "",
+      contact: "",
+      password: "",
+      roleId: "",
+      role: [],
+      roleName: "",
+      isActive: true,
     },
     validationSchema,
     onSubmit: async (values) => {
-      // Create payload matching User model
-      const payload = {
-        name: values.name,
-        email: values.email,
-        contact: values.contact,
-        password: values.password,
-        roleId: values.roleId,
-        role: values.roleName,
-        isActive: values.isActive,
-      };
+      try {
+        // Create payload matching User model
+        const payload = {
+          name: values.name,
+          email: values.email,
+          contact: values.contact,
+          password: values.password,
+          roleId: values.roleId,
+          role: values.roleName,
+          isActive: values.isActive,
+        };
 
-      await registerApi(payload);
-      handleAccountCreated(payload, values.roleName);
-      formik.resetForm();
-      toast({
-        title: `Employee ${isEditing ? "Updated" : "Added"}`,
-        text: `${values.name} has been ${
-          isEditing ? "updated" : "added"
-        } successfully.`,
-        type: "success",
-      });
+        if (isEditing) {
+          const employeeId = id?.replace("id=", "");
+          await updateEmployee(employeeId!, payload);
+        } else {
+          await registerApi(payload);
+          handleAccountCreated(payload, values.roleName);
+        }
+
+        formik.resetForm();
+        toast({
+          title: `Employee ${isEditing ? "Updated" : "Added"}`,
+          text: `${values.name} has been ${
+            isEditing ? "updated" : "added"
+          } successfully.`,
+          type: "success",
+        });
+
+        // Navigate back to employee list after successful operation
+        navigate("/employees");
+      } catch (error) {
+        console.error("Error saving employee:", error);
+        toast({
+          title: "Something went wrong",
+          text: `${
+            error?.response?.data?.error ||
+            "Please wait for a moment and try again"
+          }`,
+          type: "error",
+        });
+      }
     },
   });
   const copyToClipboard = async (text: string, label: string) => {

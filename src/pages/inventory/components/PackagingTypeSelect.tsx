@@ -1,14 +1,32 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
 type Item = { id: string; name: string };
 
-const PackagingTypeSelect = ({ formik, items, addItem, fetchItems }: { formik: any; items: Item[]; addItem: (data: { name: string }) => Promise<Item>; fetchItems: () => Promise<any> }) => {
+const PackagingTypeSelect = ({
+  formik,
+  items,
+  addItem,
+  fetchItems,
+}: {
+  formik: any;
+  items: Item[];
+  addItem: (data: { name: string }) => Promise<Item>;
+  fetchItems: () => Promise<any>;
+}) => {
   const [showNewInput, setShowNewInput] = useState(false);
   const [newName, setNewName] = useState("");
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (lastAddedId && items.length > 0) {
@@ -22,12 +40,16 @@ const PackagingTypeSelect = ({ formik, items, addItem, fetchItems }: { formik: a
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-    formik.setFieldValue("packagingTypeId", "adding...");
-    const res = await addItem({ name: newName.trim() });
-    if (res?.id) setLastAddedId(res.id);
-    setNewName("");
-    setShowNewInput(false);
-    await fetchItems();
+    try {
+      setIsSubmitting(true);
+      const res = await addItem({ name: newName.trim() });
+      if (res?.id) setLastAddedId(res.id);
+      setNewName("");
+      setShowNewInput(false);
+      await fetchItems();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -40,8 +62,13 @@ const PackagingTypeSelect = ({ formik, items, addItem, fetchItems }: { formik: a
             else formik.setFieldValue("packagingTypeId", value);
           }}
         >
-          <SelectTrigger id="packagingTypeId">
-            <SelectValue placeholder="Select packaging type" />
+          <SelectTrigger id="packagingTypeId" disabled={isSubmitting}>
+            <div className="flex items-center gap-2">
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              <SelectValue placeholder="Select packaging type" />
+            </div>
           </SelectTrigger>
           <SelectContent>
             {items.map((it) => (
@@ -63,11 +90,29 @@ const PackagingTypeSelect = ({ formik, items, addItem, fetchItems }: { formik: a
           placeholder="Enter new packaging type"
           contentRight={
             <div className="flex gap-2">
-              <Button type="button" variant="secondary" size="xs" onClick={() => setShowNewInput(false)}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                onClick={() => setShowNewInput(false)}
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
-              <Button type="button" variant="default" size="xs" onClick={handleAdd}>
-                Add
+              <Button
+                type="button"
+                variant="default"
+                size="xs"
+                onClick={handleAdd}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Adding...
+                  </span>
+                ) : (
+                  "Add"
+                )}
               </Button>
             </div>
           }
@@ -78,5 +123,3 @@ const PackagingTypeSelect = ({ formik, items, addItem, fetchItems }: { formik: a
 };
 
 export default PackagingTypeSelect;
-
-

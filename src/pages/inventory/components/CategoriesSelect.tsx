@@ -8,6 +8,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
 const CategoriesSelect = ({
   formik,
@@ -18,6 +19,7 @@ const CategoriesSelect = ({
   const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [lastAddedCategoryId, setLastAddedCategoryId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Effect to select the newly added category once it's available in the categories list
   useEffect(() => {
@@ -40,9 +42,8 @@ const CategoriesSelect = ({
           name: newCategoryName,
         };
 
-        // Set a temporary value while the API call is in progress
-        formik.setFieldValue("categoryId", "adding...");
-
+        // Do not set placeholder values that could leak into submission
+        setIsSubmitting(true);
         const res = await addCategories(newCategory);
         console.log("res", res);
 
@@ -61,6 +62,8 @@ const CategoriesSelect = ({
     } catch (error) {
       console.error("Error adding category:", error);
       return false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -82,8 +85,11 @@ const CategoriesSelect = ({
             }
           }}
         >
-          <SelectTrigger id="categoryId">
-            <SelectValue placeholder="Select category" />
+          <SelectTrigger id="categoryId" disabled={isSubmitting}>
+            <div className="flex items-center gap-2">
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <SelectValue placeholder="Select category" />
+            </div>
           </SelectTrigger>
           <SelectContent>
             {categories.map((category) => (
@@ -110,6 +116,7 @@ const CategoriesSelect = ({
                 variant="secondary"
                 size="xs"
                 onClick={handleCategoryCancel}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
@@ -118,8 +125,13 @@ const CategoriesSelect = ({
                 variant="default"
                 size="xs"
                 onClick={handleAddNewCategory}
+                disabled={isSubmitting}
               >
-                Add
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" /> Adding...</span>
+                ) : (
+                  "Add"
+                )}
               </Button>
             </div>
           }

@@ -103,6 +103,12 @@ const userPermissions: any = useMemo(() => {
     // Also check if user is authenticated
     if (!user || !isInitialized) return false;
 
+    // Special case for Dashboard - if user is authenticated, allow access
+    if (module === "Dashboard" && action === "read") {
+      console.log("Dashboard permission check - allowing access for authenticated user");
+      return true;
+    }
+
     return permissionMap.get(module)?.has(action) || false;
   };
 
@@ -112,6 +118,12 @@ const userPermissions: any = useMemo(() => {
 
     // Also check if user is authenticated
     if (!user || !isInitialized) return false;
+
+    // Special case for Dashboard - if user is authenticated, allow access
+    if (permissions.some(({ module, action }) => module === "Dashboard" && action === "read")) {
+      console.log("Dashboard permission check in hasAnyPermission - allowing access for authenticated user");
+      return true;
+    }
 
     return permissions.some(({ module, action }) =>
       hasPermission(module, action)
@@ -124,6 +136,12 @@ const userPermissions: any = useMemo(() => {
 
     // Also check if user is authenticated
     if (!user || !isInitialized) return false;
+
+    // Special case for Dashboard - if user is authenticated, allow access
+    if (permissions.some(({ module, action }) => module === "Dashboard" && action === "read")) {
+      console.log("Dashboard permission check in hasAllPermissions - allowing access for authenticated user");
+      return true;
+    }
 
     return permissions.every(({ module, action }) =>
       hasPermission(module, action)

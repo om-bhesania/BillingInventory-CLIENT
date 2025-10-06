@@ -17,12 +17,12 @@ interface CommonTableProps<T extends object> {
 function Table<T extends object>({ columns, data }: CommonTableProps<T>) {
   const table = useMaterialReactTable({
     columns,
-    data,
+    data: data || [], // Ensure data is never undefined
     enableRowSelection: false,
     enableMultiSort: true,
     enableBottomToolbar: true,
     enableTopToolbar: true,
-    enableColumnActions: false,
+    enableColumnActions: true,
     enableColumnFilters: true,
     enableSorting: true,
     enablePagination: true,
@@ -32,6 +32,14 @@ function Table<T extends object>({ columns, data }: CommonTableProps<T>) {
     enableRowNumbers: true,
     enableStickyHeader: true,
     enableStickyFooter: true,
+    // Add empty state handling
+    renderEmptyRowsFallback: () => (
+      <tr>
+        <td colSpan={columns.length} style={{ textAlign: 'center', padding: '2rem' }}>
+          No data available
+        </td>
+      </tr>
+    ),
     muiTableBodyCellProps: {
       style: {
         textAlign: "center",

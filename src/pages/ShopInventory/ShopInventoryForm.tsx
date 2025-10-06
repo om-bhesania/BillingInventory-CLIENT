@@ -2,9 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -19,6 +22,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import {
   createShopInventory,
   updateShopInventoryStock,
@@ -30,27 +36,56 @@ import {
 import { getProducts } from "@/apis/productapis";
 import useToast from "@/hooks/use-toast";
 import { getShop } from "@/apis/shopapi";
+import { useAuth } from "@/contexts/AuthContext";
+import { createRestockRequest } from "@/apis/restockRequestApi";
+import { paymentApi } from "@/apis/paymentApi";
+import { service } from "@/services/service";
+import { API_URL } from "@/services/apiuri";
+import {
+  Plus,
+  Trash2,
+  Package,
+  Store,
+  AlertTriangle,
+  CheckCircle,
+  ShoppingCart,
+  Zap,
+  Sparkles,
+  Upload,
+  FileText,
+  CreditCard,
+  Receipt,
+  Percent,
+  Calculator,
+  DollarSign,
+  X,
+} from "lucide-react";
 import { usePingUser } from "@/hooks/use-pingUser";
 
-const shopInventorySchema = z.object({
-  shopId: z.string().optional(),
+const inventoryItemSchema = z.object({
   productId: z.string().min(1, "Product is required"),
-  currentStock: z.number().min(0, "Stock must be non-negative"),
+  currentStock: z.number().min(1, "Stock must be at least 1"),
   minStockPerItem: z
     .number({ invalid_type_error: "Enter a valid number" })
-    .min(0, "Min stock must be >= 0")
     .optional(),
-  lowStockAlertsEnabled: z.boolean().optional(),
+  lowStockAlertsEnabled: z.boolean().default(true),
 });
 
-const bulkItemSchema = z.object({
-  productId: z.string().min(1),
-  currentStock: z.number().min(0).default(0),
-  minStockPerItem: z.number().min(0).optional(),
-  lowStockAlertsEnabled: z.boolean().optional(),
+const paymentSchema = z.object({
+  paymentMethod: z.enum(["upfront", "credit"]).default("upfront"),
+  receiptFile: z.any().optional(),
+  discountCode: z.string().optional(),
+  notes: z.string().optional(),
 });
 
-type ShopInventoryFormData = z.infer<typeof shopInventorySchema>;
+const bulkInventorySchema = z.object({
+  items: z.array(inventoryItemSchema).min(1, "At least one item is required"),
+  payment: paymentSchema.optional(),
+});
+
+type InventoryItem = z.infer<typeof inventoryItemSchema>;
+type PaymentData = z.infer<typeof paymentSchema>;
+type BulkInventoryFormData = z.infer<typeof bulkInventorySchema>;
 
 interface ShopInventoryFormProps {
   inventoryItem?: ShopInventoryItem;
@@ -70,6 +105,16 @@ interface Shop {
   name: string;
 }
 
+interface DiscountCode {
+  id: string;
+  code: string;
+  name: string;
+  discountType: string;
+  discountValue: number;
+  isActive: boolean;
+  validUntil: string;
+}
+
 function ShopInventoryForm({
   inventoryItem,
   onSuccess,
@@ -77,128 +122,142 @@ function ShopInventoryForm({
 }: ShopInventoryFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
-  const [itemRows, setItemRows] = useState<Array<{
-    productId: string;
-    currentStock: number;
-    minStockPerItem?: number;
-    lowStockAlertsEnabled?: boolean;
-  }>>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedDiscountCode, setSelectedDiscountCode] =
+    useState<DiscountCode | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"upfront" | "credit">(
+    "upfront"
+  );
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [finalAmount, setFinalAmount] = useState(0);
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
-  const { user } = usePingUser();
+  const { user, isLoading: authLoading } = useAuth();
+  const { user: pingUser } = usePingUser();
 
   // Get user's shop IDs from ping data
-  const userShopIds = user?.managedShops?.map((shop) => shop.id) || [];
-
+  const userShopIds =
+    user?.managedShops?.map((shop) => shop.id) ||
+    pingUser?.managedShops?.map((shop) => shop.id) ||
+    [];
   // For Shop Owner role, automatically use their assigned shop
-  const isShopOwner = user?.role === "Shop_Owner" || user?.role === "Shop Owner";
+  const isShopOwner =
+    user?.role === "Shop_Owner" || user?.role === "Shop Owner";
   const autoSelectedShopId =
     isShopOwner && userShopIds.length > 0 ? userShopIds[0] : "";
 
+  // Get itemId from URL params
+  const itemId = searchParams.get('itemId');
+  const prefilledProduct = itemId ? products.find(p => p.id === itemId) : null;
+console.log("userShopIds", pingUser);
   const {
     register,
     handleSubmit,
     formState: { errors },
     setValue,
     watch,
-  } = useForm<ShopInventoryFormData>({
-    resolver: zodResolver(shopInventorySchema),
+    reset,
+  } = useForm<InventoryItem>({
+    resolver: zodResolver(inventoryItemSchema),
     defaultValues: {
-      shopId: inventoryItem?.shopId || autoSelectedShopId || "",
-      productId: inventoryItem?.productId || "",
-      currentStock: inventoryItem?.currentStock || 0,
-      minStockPerItem: undefined,
-      lowStockAlertsEnabled: true,
+      productId: inventoryItem?.productId || prefilledProduct?.id || "",
+      currentStock: inventoryItem?.currentStock || (prefilledProduct ? 50 : 1),
+      minStockPerItem: inventoryItem?.minStockPerItem || 0,
+      lowStockAlertsEnabled: inventoryItem?.lowStockAlertsEnabled ?? true,
     },
   });
 
-  const watchedShopId = watch("shopId");
+  // Reset form to default values
+  const resetForm = () => {
+    reset({
+      productId: prefilledProduct?.id || "",
+      currentStock: prefilledProduct ? 50 : 1,
+      minStockPerItem: 0,
+      lowStockAlertsEnabled: true,
+    });
+  };
+
   const watchedProductId = watch("productId");
+  const watchedCurrentStock = watch("currentStock");
+  const watchedMinStockPerItem = watch("minStockPerItem");
+  const watchedAlertsEnabled = watch("lowStockAlertsEnabled");
+
+  // Auto-calculate min stock as 20% of current stock, but allow 0
+  const calculateMinStock = (stock: number) => {
+    return Math.max(0, Math.round(stock * 0.2));
+  };
+
+  // Calculate total amount and apply discount
+  useEffect(() => {
+    if (!inventoryItems || !Array.isArray(inventoryItems)) return;
+    
+    const total = inventoryItems.reduce((sum, item) => {
+      const product = products.find((p) => p.id === item.productId);
+      return sum + (product ? product.unitPrice * item.currentStock : 0);
+    }, 0);
+
+    setTotalAmount(total);
+
+    if (selectedDiscountCode) {
+      let discount = 0;
+      switch (selectedDiscountCode.discountType) {
+        case "percentage":
+          discount = total * (selectedDiscountCode.discountValue / 100);
+          break;
+        case "flat":
+          discount = selectedDiscountCode.discountValue;
+          break;
+        default:
+          discount = 0;
+      }
+
+      setDiscountAmount(Math.min(discount, total));
+      setFinalAmount(Math.max(0, total - discount));
+    } else {
+      setDiscountAmount(0);
+      setFinalAmount(total);
+    }
+  }, [inventoryItems, products, selectedDiscountCode]);
+
+  // Handle URL parameters for prefilling - set form values when products are loaded
+  useEffect(() => {
+    if (prefilledProduct && !inventoryItem) {
+      setValue("productId", prefilledProduct.id);
+      setValue("currentStock", 50); // Prefill stock amount to 50
+    }
+  }, [prefilledProduct, inventoryItem, setValue]);
+
+  // Auto-fill product details when product is selected
+  useEffect(() => {
+    if (watchedProductId) {
+      const selectedProduct = products.find((p) => p.id === watchedProductId);
+      if (selectedProduct) {
+        // Auto-fill SKU and unit price in the form (for display purposes)
+        // The form will show this information to the user
+        console.log("Selected product:", selectedProduct);
+      }
+    }
+  }, [watchedProductId, products]);
   const fetchData = async () => {
     try {
-      // Only fetch products - shops are not needed for Shop Owner role
+      setIsLoading(true);
       const productsData = await getProducts();
-      console.log("productsData", productsData);
       setProducts(productsData as Product[]);
 
-      // For Shop Owner role, we don't need to fetch all shops
-      if (user?.role !== "Shop_Owner") {
+      // For non-Shop Owner roles, fetch shops
+      if (!isShopOwner) {
         const shopsData = await getShop();
-        console.log("shopsData", shopsData);
         setShops(shopsData as Shop[]);
       }
     } catch (error) {
       toast({
-        title: "Error",
-        text: "Failed to fetch data",
-        type: "error",
-      });
-    }
-  };
-  useEffect(() => {
-    fetchData();
-  }, [user]); // Only depend on user, not toast
-  const onSubmit = async (data: ShopInventoryFormData) => {
-    setIsLoading(true);
-    try {
-      // If user added multiple items rows, call bulk create
-      const targetShopId = isShopOwner ? (autoSelectedShopId || userShopIds[0]) : (data.shopId || watchedShopId);
-      console.log("Target shop ID:", targetShopId, "Item rows:", itemRows.length);
-      if (!inventoryItem && itemRows.length > 0) {
-        const cleaned = itemRows
-          .filter((r) => r.productId)
-          .map((r) => ({
-            productId: r.productId,
-            currentStock: Number(r.currentStock) || 0,
-            minStockPerItem: typeof r.minStockPerItem === "number" ? r.minStockPerItem : undefined,
-            lowStockAlertsEnabled: typeof r.lowStockAlertsEnabled === "boolean" ? r.lowStockAlertsEnabled : true,
-          }));
-        console.log("Cleaned items:", cleaned);
-        if (cleaned.length > 0 && targetShopId) {
-          console.log("Calling bulk create with:", { shopId: targetShopId, items: cleaned });
-          await bulkCreateShopInventory({ shopId: targetShopId as string, items: cleaned });
-          toast({ title: "Success", text: `Added ${cleaned.length} items to inventory`, type: "success" });
-          onSuccess?.();
-          return;
-        }
-      }
-      if (inventoryItem) {
-        // Update existing inventory
-        const updateData: UpdateStockRequest = {
-          currentStock: data.currentStock,
-        };
-        await updateShopInventoryStock(inventoryItem.id, updateData);
-        toast({
-          title: "Success",
-          text: "Inventory stock updated successfully",
-          type: "success",
-        });
-      } else {
-        // Create new inventory
-        const createData: CreateShopInventoryRequest = {
-          shopId: targetShopId as string,
-          productId: data.productId,
-          currentStock: data.currentStock,
-          minStockPerItem:
-            typeof data.minStockPerItem === "number" ? data.minStockPerItem : undefined,
-          lowStockAlertsEnabled:
-            typeof data.lowStockAlertsEnabled === "boolean"
-              ? data.lowStockAlertsEnabled
-              : true,
-        };
-        await createShopInventory(createData);
-        toast({
-          title: "Success",
-          text: "Product added to shop inventory successfully",
-          type: "success",
-        });
-      }
-
-      onSuccess?.();
-    } catch (error) {
-      toast({
-        title: "Error",
-        text: "Failed to save inventory",
+        title: "Oops! 🚨",
+        text: "Failed to fetch data. Our data elves are on strike!",
         type: "error",
       });
     } finally {
@@ -206,293 +265,744 @@ function ShopInventoryForm({
     }
   };
 
+  useEffect(() => {
+    if (user && !authLoading) {
+      fetchData();
+    }
+  }, [user, authLoading]);
+
+  // Add item to inventory list
+  const addItemToList = () => {
+    if (!watchedProductId) {
+      toast({
+        title: "Hold up! 🛑",
+        text: "Please select a product first",
+        type: "error",
+      });
+      return;
+    }
+
+    const stockAmount = Number(watchedCurrentStock) || 0;
+    if (stockAmount <= 0) {
+      toast({
+        title: "Invalid Stock! ⚠️",
+        text: "Please enter a valid stock amount greater than 0",
+        type: "error",
+      });
+      return;
+    }
+
+    const newItem: InventoryItem = {
+      productId: watchedProductId,
+      currentStock: stockAmount,
+      minStockPerItem:
+        typeof watchedMinStockPerItem === "number" &&
+        watchedMinStockPerItem >= 0
+          ? watchedMinStockPerItem
+          : calculateMinStock(stockAmount), // Auto-calculate 20% if not specified
+      lowStockAlertsEnabled: watchedAlertsEnabled ?? true,
+    };
+
+    // Always add new item to the list (no replacement)
+    setInventoryItems((prev) => [...prev, newItem]);
+
+    toast({
+      title: "Added! 🎉",
+      text: "Product added to your inventory list",
+      type: "success",
+    });
+
+    // Reset form to default values
+    resetForm();
+  };
+
+  // Remove item from inventory list
+  const removeItemFromList = (index: number) => {
+    setInventoryItems((prev) => prev.filter((_, i) => i !== index));
+    toast({
+      title: "Removed! 🗑️",
+      text: "Product removed from your list",
+      type: "success",
+    });
+  };
+
+  // Clear all items from inventory list
+  const clearAllItems = () => {
+    setInventoryItems([]);
+    toast({
+      title: "Cleared! 🧹",
+      text: "All items removed from your list",
+      type: "success",
+    });
+  };
+  // Submit all items
+  const onSubmit = async () => {
+    if (!inventoryItems || inventoryItems.length === 0) {
+      toast({
+        title: "Empty cart! 🛒",
+        text: "Add some products to your inventory list first",
+        type: "error",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const targetShopId = autoSelectedShopId || userShopIds[0];
+      console.log("targetShopId", targetShopId);
+      if (!targetShopId) {
+        toast({
+          title: "Shop missing! 🏪",
+          text: "Unable to determine which shop to add inventory to",
+          type: "error",
+        });
+        return;
+      }
+
+      // Create restock requests with payment data
+      const restockRequestIds: string[] = [];
+
+      for (const item of inventoryItems) {
+        const product = products.find((p) => p.id === item.productId);
+        const itemTotal = product ? product.unitPrice * item.currentStock : 0;
+
+        const restockRequest = await createRestockRequest({
+          shopId: targetShopId,
+          productId: item.productId,
+          requestedAmount: item.currentStock,
+          requestType: "INVENTORY_ADD",
+          paymentMethod,
+          discountCode: selectedDiscountCode?.code,
+          totalAmount: itemTotal,
+          discountAmount: selectedDiscountCode
+            ? selectedDiscountCode.discountType === "percentage"
+              ? itemTotal * (selectedDiscountCode.discountValue / 100)
+              : selectedDiscountCode.discountValue
+            : 0,
+          finalAmount: finalAmount / (inventoryItems?.length || 1), // Distribute total amount
+          notes: `Min: ${item.minStockPerItem || 0}, Alerts: ${
+            item.lowStockAlertsEnabled ? "Enabled" : "Disabled"
+          }${
+            selectedDiscountCode
+              ? `, Discount: ${selectedDiscountCode.code}`
+              : ""
+          }`,
+        });
+
+        restockRequestIds.push(restockRequest.id);
+      }
+
+      // Upload receipt if credit payment method
+      if (paymentMethod === "credit" && receiptFile) {
+        for (const requestId of restockRequestIds) {
+          try {
+            await paymentApi.uploadReceipt({
+              restockRequestId: requestId,
+              receiptFile: receiptFile,
+            });
+          } catch (error) {
+            console.error("Error uploading receipt:", error);
+            toast({
+              title: "Warning",
+              description: "Receipt upload failed, but request was created",
+              variant: "destructive",
+            });
+          }
+        }
+      }
+
+      toast({
+        title: "Request sent! 📋",
+        text: `Sent ${inventoryItems?.length || 0} item(s) for approval. ${
+          paymentMethod === "credit"
+            ? "Receipt uploaded for verification."
+            : "Payment will be processed upon approval."
+        }`,
+        type: "success",
+      });
+
+      // Clear the list and reset
+      setInventoryItems([]);
+      setReceiptFile(null);
+      setSelectedDiscountCode(null);
+      setPaymentMethod("upfront");
+      onSuccess?.();
+    } catch (error) {
+      console.error("Submission error:", error);
+      toast({
+        title: "Oops! 😅",
+        text: "Failed to save inventory. Our servers are having a coffee break!",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Update existing inventory item
+  const onUpdateSingle = async (data: InventoryItem) => {
+    if (!inventoryItem) return;
+    console.log("data", data);
+    setIsSubmitting(true);
+    try {
+      const updateData: UpdateStockRequest = {
+        currentStock: data.currentStock,
+      };
+
+      await updateShopInventoryStock(inventoryItem.id, updateData);
+
+      toast({
+        title: "Updated! ✨",
+        text: "Inventory stock updated successfully",
+        type: "success",
+      });
+
+      onSuccess?.();
+    } catch (error) {
+      toast({
+        title: "Update failed! 😔",
+        text: "Failed to update inventory stock",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const selectedProduct = products.find((p) => p.id === watchedProductId);
-  // const selectedShop = shops.find((s) => s.id === watchedShopId);
+  const selectedShop = shops.find((s) => s.id === autoSelectedShopId);
+
+  if (isLoading || authLoading) {
+    return (
+      <Card className="w-full max-w-4xl mx-auto">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="ml-2">Loading products...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle>
-          {inventoryItem
-            ? "Update Inventory Stock"
-            : "Add Product to Shop Inventory"}
-        </CardTitle>
-        <CardDescription>
-          {inventoryItem
-            ? "Update the current stock level for this product"
-            : "Add a new product to the shop's inventory with initial stock"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Shop selection for Admin / non-shop-owner */}
-            {!isShopOwner && (
-              <div className="space-y-2">
-                <Label htmlFor="shopId">Shop</Label>
-                <Select
-                  value={watchedShopId}
-                  onValueChange={(value) => setValue("shopId", value)}
-                  disabled={!!inventoryItem}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a shop" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {shops.map((shop) => (
-                      <SelectItem key={shop.id} value={shop.id}>
-                        {shop.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.shopId && (
-                  <p className="text-sm text-red-500">{errors.shopId.message as any}</p>
-                )}
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+        <CardHeader className="text-center">
+          <div className="flex items-center justify-center mb-2">
+            <Package className="h-8 w-8 text-blue-600 mr-2" />
+            <CardTitle className="text-2xl font-bold text-blue-900">
+              {inventoryItem
+                ? "Update Inventory Stock"
+                : prefilledProduct
+                ? "Add Product to Inventory"
+                : "Add Products to Inventory"}
+            </CardTitle>
+            <Sparkles className="h-6 w-6 text-yellow-500 ml-2" />
+          </div>
+          <CardDescription className="text-blue-700">
+            {inventoryItem
+              ? "Update the current stock level for this product"
+              : prefilledProduct
+              ? "Product pre-selected from URL parameter"
+              : "Request inventory additions! Add multiple products and send them for admin approval. 🚀"}
+          </CardDescription>
+          {prefilledProduct && (
+            <div className="mt-2 p-2 bg-green-100 rounded-lg border border-green-200">
+              <div className="flex items-center justify-center text-green-800">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                <span className="text-sm font-medium">
+                  Pre-selected: {prefilledProduct.name} ({prefilledProduct.sku}) - Stock: 50
+                </span>
               </div>
-            )}
-            {/* <div className="space-y-2">
-              <Label htmlFor="shopId">Shop</Label>
-              {isShopOwner && autoSelectedShopId ? (
-                // For Shop Owner, show the auto-selected shop as read-only
-                <div className="p-3 bg-gray-50 border rounded-md">
-                  <span className="font-medium">
-                    {shops.find((s) => s.id === autoSelectedShopId)?.name ||
-                      "Your Shop"}
-                  </span>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Automatically selected based on your role
-                  </p>
+            </div>
+          )}
+        </CardHeader>
+      </Card>
+
+      {/* Shop Info */}
+      {autoSelectedShopId && (
+        <Card className="bg-green-50 border-green-200">
+          <CardContent className="p-4">
+            <div className="flex items-center">
+              <Store className="h-5 w-5 text-green-600 mr-2" />
+              <span className="font-medium text-green-800">
+                Target Shop: {selectedShop?.name || "Your Shop"}
+              </span>
+              <Badge variant="secondary" className="ml-2">
+                Shop Owner
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {inventoryItem ? (
+        /* Single Item Update Form */
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-orange-500 mr-2" />
+              Update Stock Level
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onUpdateSingle)} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Product</Label>
+                  <div className="p-3 bg-gray-50 border rounded-md">
+                    <span className="font-medium">
+                      {selectedProduct?.name} ({selectedProduct?.sku})
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                // For other roles, show shop selection dropdown
-                <Select
-                  value={watchedShopId}
-                  onValueChange={(value) => setValue("shopId", value)}
-                  disabled={!!inventoryItem}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a shop" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {shops.map((shop) => (
-                      <SelectItem key={shop.id} value={shop.id}>
-                        {shop.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              {errors.shopId && (
-                <p className="text-sm text-red-500">{errors.shopId.message}</p>
-              )}
-            </div> */}
+                <div className="space-y-2">
+                  <Label htmlFor="currentStock">Current Stock</Label>
+                  <Input
+                    id="currentStock"
+                    type="number"
+                    min="1"
+                    {...register("currentStock", { valueAsNumber: true })}
+                    placeholder="Enter current stock level"
+                  />
+                  {errors.currentStock && (
+                    <p className="text-sm text-red-500">
+                      {errors.currentStock.message}
+                    </p>
+                  )}
+                </div>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="productId">Product</Label>
-              <Select
-                value={watchedProductId}
-                onValueChange={(value) => setValue("productId", value)}
-                disabled={!!inventoryItem}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} ({product.sku})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.productId && (
-                <p className="text-sm text-red-500">
-                  {errors.productId.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="currentStock">Current Stock</Label>
-              <Input
-                id="currentStock"
-                type="number"
-                min="0"
-                {...register("currentStock", { valueAsNumber: true })}
-                placeholder="Enter current stock level"
-              />
-              {errors.currentStock && (
-                <p className="text-sm text-red-500">
-                  {errors.currentStock.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Min stock and alerts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="minStockPerItem">Min stock per item (shop)</Label>
-              <Input
-                id="minStockPerItem"
-                type="number"
-                min="0"
-                {...register("minStockPerItem", { valueAsNumber: true })}
-                placeholder="e.g., 20"
-              />
-              {errors.minStockPerItem && (
-                <p className="text-sm text-red-500">{errors.minStockPerItem.message as any}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-3 mt-6">
-              <input
-                id="lowStockAlertsEnabled"
-                type="checkbox"
-                className="h-4 w-4"
-                {...register("lowStockAlertsEnabled")}
-                defaultChecked
-              />
-              <Label htmlFor="lowStockAlertsEnabled">Enable low stock alerts</Label>
-            </div>
-          </div>
-
-          {/* Add New Items (multi-add like billing) */}
-          {!inventoryItem && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-medium">Add New Items</h4>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() =>
-                    setItemRows((rows) => [
-                      ...rows,
-                      {
-                        productId: "",
-                        currentStock: 0,
-                        minStockPerItem: undefined,
-                        lowStockAlertsEnabled: true,
-                      },
-                    ])
-                  }
-                >
-                  Add Item
+              <div className="flex justify-end space-x-2">
+                {onCancel && (
+                  <Button type="button" variant="outline" onClick={onCancel}>
+                    Cancel
+                  </Button>
+                )}
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Updating..." : "Update Stock"}
                 </Button>
               </div>
-              {itemRows.length > 0 && (
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        /* Multi-Item Form */
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Add Item Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Plus className="h-5 w-5 text-green-600 mr-2" />
+                Add New Item
+              </CardTitle>
+              <CardDescription>
+                Select a product and add it to your inventory list
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={handleSubmit(addItemToList)}
+                className="space-y-4"
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="productId">Product</Label>
+                  <Select
+                    value={watchedProductId}
+                    onValueChange={(value) => setValue("productId", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a product to add" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          <div className="flex items-center justify-between w-full">
+                            <span>{product.name}</span>
+                            <span className="text-sm text-gray-500 ml-2">
+                              ({product.sku})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.productId && (
+                    <p className="text-sm text-red-500">
+                      {errors.productId.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentStock">Stock Amount</Label>
+                    <Input
+                      id="currentStock"
+                      type="number"
+                      min="1"
+                      {...register("currentStock", { valueAsNumber: true })}
+                      placeholder="1"
+                    />
+                    {errors.currentStock && (
+                      <p className="text-sm text-red-500">
+                        {errors.currentStock.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="minStockPerItem">
+                      Min Stock (Optional)
+                    </Label>
+                    <Input
+                      id="minStockPerItem"
+                      type="number"
+                      min="0"
+                      {...register("minStockPerItem", { valueAsNumber: true })}
+                      placeholder={`Auto: ${
+                        watchedCurrentStock
+                          ? calculateMinStock(watchedCurrentStock)
+                          : 0
+                      }`}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Leave empty or set to 0 for auto-calculation (20% of
+                      stock)
+                    </p>
+                    {errors.minStockPerItem && (
+                      <p className="text-sm text-red-500">
+                        {errors.minStockPerItem.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    id="lowStockAlertsEnabled"
+                    type="checkbox"
+                    className="h-4 w-4"
+                    {...register("lowStockAlertsEnabled")}
+                    defaultChecked
+                  />
+                  <Label htmlFor="lowStockAlertsEnabled">
+                    Enable low stock alerts
+                  </Label>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!watchedProductId}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add to List
+                </Button>
+              </form>
+
+              {/* Selected Product Info */}
+              {selectedProduct && (
+                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-blue-900">
+                        {selectedProduct.name}
+                      </h4>
+                      <p className="text-sm text-blue-700">
+                        SKU: {selectedProduct.sku}
+                      </p>
+                      <p className="text-sm text-blue-600">
+                        Price: ₹{selectedProduct.unitPrice}
+                      </p>
+                    </div>
+                    <CheckCircle className="h-6 w-6 text-green-500" />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Inventory List */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <ShoppingCart className="h-5 w-5 text-purple-600 mr-2" />
+                  Inventory List
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Badge
+                    variant="secondary"
+                    className="bg-purple-100 text-purple-800"
+                  >
+                    {inventoryItems?.length || 0} item
+                    {(inventoryItems?.length || 0) !== 1 ? "s" : ""}
+                  </Badge>
+                  {(inventoryItems?.length || 0) > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearAllItems}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+              </CardTitle>
+              <CardDescription>
+                Review and manage your inventory items before submitting
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(inventoryItems?.length || 0) === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>Your inventory list is empty</p>
+                  <p className="text-sm">Add some products to get started!</p>
+                </div>
+              ) : (
                 <div className="space-y-3">
-                  {itemRows.map((row, idx) => (
-                    <div key={idx} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                      <div>
-                        <Label>Product</Label>
-                        <Select
-                          value={row.productId}
-                          onValueChange={(value) =>
-                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, productId: value } : r)))
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select product" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.name} ({p.sku})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                  {inventoryItems.map((item, index) => {
+                    const product = products.find(
+                      (p) => p.id === item.productId
+                    );
+                    return (
+                      <div
+                        key={`${item.productId}-${index}`}
+                        className="p-4 border rounded-lg bg-gray-50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{product?.name}</h4>
+                            <p className="text-sm text-gray-600">
+                              SKU: {product?.sku}
+                            </p>
+                            <div className="flex items-center space-x-4 mt-2 text-sm">
+                              <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                Stock: {item.currentStock}
+                              </span>
+                              <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                                Min: {item.minStockPerItem || 0}
+                              </span>
+                              <span
+                                className={`px-2 py-1 rounded ${
+                                  item.lowStockAlertsEnabled
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                Alerts:{" "}
+                                {item.lowStockAlertsEnabled ? "On" : "Off"}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => removeItemFromList(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div>
-                        <Label>Amount</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={row.currentStock}
-                          onChange={(e) =>
-                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, currentStock: Number(e.target.value) || 0 } : r)))
-                          }
-                          placeholder="0"
-                        />
-                      </div>
-                      <div>
-                        <Label>Min stock</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={row.minStockPerItem ?? ""}
-                          onChange={(e) =>
-                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, minStockPerItem: e.target.value === "" ? undefined : Number(e.target.value) } : r)))
-                          }
-                          placeholder="optional"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={row.lowStockAlertsEnabled !== false}
-                          onChange={(e) =>
-                            setItemRows((rows) => rows.map((r, i) => (i === idx ? { ...r, lowStockAlertsEnabled: e.target.checked } : r)))
-                          }
-                        />
-                        <Label>Alerts</Label>
-                      </div>
-                      <div>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          onClick={() => setItemRows((rows) => rows.filter((_, i) => i !== idx))}
-                        >
-                          Remove
-                        </Button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <Separator className="my-4" />
+
+              {/* Payment and Discount Section */}
+              {(inventoryItems?.length || 0) > 0 && (
+                <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center text-green-800">
+                      <CreditCard className="h-5 w-5 mr-2" />
+                      Payment & Discount Details
+                    </CardTitle>
+                    <CardDescription className="text-green-700">
+                      Configure payment method and apply discount codes
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Payment Method */}
+                    <div className="space-y-2">
+                      <Label>Payment Method</Label>
+                      <div className="flex space-x-4">
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            value="upfront"
+                            checked={paymentMethod === "upfront"}
+                            onChange={(e) =>
+                              setPaymentMethod(
+                                e.target.value as "upfront" | "credit"
+                              )
+                            }
+                            className="h-4 w-4"
+                          />
+                          <span className="flex items-center">
+                            <DollarSign className="h-4 w-4 mr-1" />
+                            Upfront Payment
+                          </span>
+                        </label>
+                        <label className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            value="credit"
+                            checked={paymentMethod === "credit"}
+                            onChange={(e) =>
+                              setPaymentMethod(
+                                e.target.value as "upfront" | "credit"
+                              )
+                            }
+                            className="h-4 w-4"
+                          />
+                          <span className="flex items-center">
+                            <Receipt className="h-4 w-4 mr-1" />
+                            Credit (Receipt Upload)
+                          </span>
+                        </label>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* Display selected product and shop info */}
-          {selectedProduct && (
-            <div className="p-4 bg-gray-50 rounded-lg space-y-2">
-              {/* {selectedShop && (
-                <div>
-                  <span className="font-medium">Shop:</span> {selectedShop.name}
-                </div>
-              )} */}
-              {selectedProduct && (
-                <div>
-                  <span className="font-medium">Product:</span>{" "}
-                  {selectedProduct.name} ({selectedProduct.sku})
-                  <br />
-                  <span className="text-sm text-gray-600">
-                    Unit Price: ₹{selectedProduct.unitPrice}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
+                    {/* Receipt Upload for Credit Payment */}
+                    {paymentMethod === "credit" && (
+                      <div className="space-y-2">
+                        <Label>Receipt Upload</Label>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                          <input
+                            type="file"
+                            id="receipt-upload"
+                            accept="image/*,.pdf"
+                            onChange={(e) =>
+                              setReceiptFile(e.target.files?.[0] || null)
+                            }
+                            className="hidden"
+                          />
+                          <label
+                            htmlFor="receipt-upload"
+                            className="cursor-pointer flex flex-col items-center space-y-2"
+                          >
+                            <Upload className="h-8 w-8 text-gray-400" />
+                            <span className="text-sm text-gray-600">
+                              {receiptFile
+                                ? receiptFile.name
+                                : "Click to upload receipt"}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Max 5MB (JPG, PNG, PDF)
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
 
-          <div className="flex justify-end space-x-2">
-            {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel}>
-                Cancel
-              </Button>
-            )}
-            <Button type="submit" disabled={isLoading}>
-              {isLoading
-                ? "Saving..."
-                : inventoryItem
-                ? "Update Stock"
-                : "Add to Inventory"}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+                    {/* Discount Code */}
+                    <div className="space-y-2">
+                      <Label>Discount Code (Optional)</Label>
+                      <div className="flex space-x-2">
+                        <Input
+                          placeholder="Enter discount code"
+                          value={selectedDiscountCode?.code || ""}
+                          onChange={(e) => {
+                            const code = e.target.value;
+                            const discount = discountCodes.find(
+                              (d) => d.code === code
+                            );
+                            setSelectedDiscountCode(discount || null);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setSelectedDiscountCode(null)}
+                          disabled={!selectedDiscountCode}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {selectedDiscountCode && (
+                        <div className="p-2 bg-green-100 rounded text-sm text-green-800">
+                          <div className="flex items-center">
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            {selectedDiscountCode.name} -{" "}
+                            {selectedDiscountCode.discountType === "percentage"
+                              ? `${selectedDiscountCode.discountValue}%`
+                              : `₹${selectedDiscountCode.discountValue}`}{" "}
+                            off
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cost Summary */}
+                    <div className="bg-white p-4 rounded-lg border space-y-2">
+                      <h4 className="font-medium text-gray-900">
+                        Cost Summary
+                      </h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span>Subtotal:</span>
+                          <span>₹{totalAmount.toFixed(2)}</span>
+                        </div>
+                        {discountAmount > 0 && (
+                          <div className="flex justify-between text-green-600">
+                            <span>Discount:</span>
+                            <span>-₹{discountAmount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        <Separator />
+                        <div className="flex justify-between font-medium text-lg">
+                          <span>Total:</span>
+                          <span>₹{finalAmount.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="space-y-3">
+                <Button
+                  onClick={onSubmit}
+                  disabled={(inventoryItems?.length || 0) === 0 || isSubmitting}
+                  className="w-full"
+                  size="lg"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Sending Request...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Send {inventoryItems?.length || 0} Item
+                      {(inventoryItems?.length || 0) !== 1 ? "s" : ""} for Approval
+                    </>
+                  )}
+                </Button>
+
+                {onCancel && (
+                  <Button
+                    variant="outline"
+                    onClick={onCancel}
+                    className="w-full"
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
   );
 }
 

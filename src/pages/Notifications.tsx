@@ -24,7 +24,7 @@ import {
   X
 } from "lucide-react";
 import { Tooltip } from "@mui/material";
-import Swal from "sweetalert2";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Notifications() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -32,6 +32,7 @@ export default function Notifications() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [highlightedNotificationId, setHighlightedNotificationId] = useState<string | null>(null);
+  const [newNotifications, setNewNotifications] = useState<Set<string>>(new Set());
   
   const { notifications, unreadCount, markRead, markAllRead, clearNotification, clearAllNotifications } = useNotifications();
   const { hasModuleAccess } = usePermissions();
@@ -39,6 +40,7 @@ export default function Notifications() {
   const navigate = useNavigate();
   const location = useLocation();
   const notificationRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const { toast } = useToast();
 
   // Handle URL parameters for highlighting
   useEffect(() => {
@@ -52,14 +54,9 @@ export default function Notifications() {
       const notification = notifications.find(n => n.id === highlightId);
       if (notification) {
         // Show toast notification
-        Swal.fire({
-          icon: "info",
+        toast({
           title: "Notification Found",
-          text: `Scrolling to: ${notification.type.replace(/_/g, " ")}`,
-          timer: 100,
-          showConfirmButton: false,
-          toast: true,
-          position: "top-end",
+          description: `Scrolling to: ${notification.type.replace(/_/g, " ")}`,
         });
       }
       
@@ -79,6 +76,19 @@ export default function Notifications() {
     }
   }, [location.search, navigate, notifications]);
 
+  // Track new notifications for highlighting
+  useEffect(() => {
+    const newUnreadNotifications = notifications
+      .filter(n => !n.isRead)
+      .map(n => n.id);
+    
+    setNewNotifications(prev => {
+      const newSet = new Set(prev);
+      newUnreadNotifications.forEach(id => newSet.add(id));
+      return newSet;
+    });
+  }, [notifications]);
+
   // Clear highlight after a delay
   useEffect(() => {
     if (highlightedNotificationId) {
@@ -94,13 +104,25 @@ export default function Notifications() {
   const filteredNotifications = notifications
     .filter((notification) => {
       const matchesSearch = notification.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           notification.type.toLowerCase().includes(searchTerm.toLowerCase());
+                           notification.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           (notification.category || "SYSTEM").toLowerCase().includes(searchTerm.toLowerCase());
+      
       const matchesStatus = statusFilter === "all" || 
                            (statusFilter === "unread" && !notification.isRead) ||
                            (statusFilter === "read" && notification.isRead);
-      const matchesType = typeFilter === "all" || notification.type === typeFilter;
       
-      return matchesSearch && matchesStatus && matchesType;
+      // Fix category filtering - check both category and type
+      const notificationCategory = notification.category || "SYSTEM";
+      const matchesCategory = typeFilter === "all" || 
+                             notificationCategory === typeFilter ||
+                             (typeFilter === "CHAT" && (notificationCategory === "CHAT" || notification.type.includes("CHAT"))) ||
+                             (typeFilter === "RESTOCK" && (notificationCategory === "RESTOCK" || notification.type.includes("RESTOCK"))) ||
+                             (typeFilter === "INVENTORY" && (notificationCategory === "INVENTORY" || notification.type.includes("LOW_STOCK") || notification.type.includes("PRODUCT"))) ||
+                             (typeFilter === "BILLING" && (notificationCategory === "BILLING" || notification.type.includes("INVOICE"))) ||
+                             (typeFilter === "FACTORY" && (notificationCategory === "FACTORY" || notification.type.includes("FACTORY"))) ||
+                             (typeFilter === "SYSTEM" && notificationCategory === "SYSTEM");
+      
+      return matchesSearch && matchesStatus && matchesCategory;
     })
     .sort((a, b) => {
       switch (sortBy) {
@@ -116,46 +138,86 @@ export default function Notifications() {
       }
     });
 
-  // Get notification icon based on type
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "LOW_STOCK_ALERT":
-        return <AlertTriangle className="h-5 w-5 text-red-500" />;
-      case "RESTOCK_REQUEST":
+  // Get notification icon based on type and category
+  const getNotificationIcon = (type: string, category: string) => {
+    // First check by category for better organization
+    switch (category) {
+      case "INVENTORY":
+        return <Package className="h-5 w-5 text-blue-500" />;
+      case "BILLING":
+        return <FileText className="h-5 w-5 text-green-500" />;
+      case "RESTOCK":
         return <Package className="h-5 w-5 text-amber-500" />;
-      case "RESTOCK_APPROVED":
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case "RESTOCK_REJECTED":
-        return <X className="h-5 w-5 text-red-600" />;
-      case "PRODUCT_CREATED":
-      case "PRODUCT_UPDATED":
-        return <FileText className="h-5 w-5 text-blue-500" />;
-      case "FLAVOR_CREATED":
-        return <Package className="h-5 w-5 text-purple-500" />;
-      case "CATEGORY_CREATED":
-      case "CATEGORY_UPDATED":
-      case "CATEGORY_DEACTIVATED":
+      case "SYSTEM":
         return <Settings className="h-5 w-5 text-gray-500" />;
-      case "LOGIN_SUCCESS":
-        return <Home className="h-5 w-5 text-green-600" />;
+      case "CHAT":
+        return <Bell className="h-5 w-5 text-purple-500" />;
+      case "FACTORY":
+        return <Home className="h-5 w-5 text-indigo-500" />;
       default:
-        return <Bell className="h-5 w-5 text-gray-500" />;
+        // Fallback to type-based icons
+        switch (type) {
+          case "LOW_STOCK_ALERT":
+            return <AlertTriangle className="h-5 w-5 text-red-500" />;
+          case "RESTOCK_REQUEST":
+            return <Package className="h-5 w-5 text-amber-500" />;
+          case "RESTOCK_APPROVED":
+            return <CheckCircle className="h-5 w-5 text-green-500" />;
+          case "RESTOCK_REJECTED":
+            return <X className="h-5 w-5 text-red-600" />;
+          case "SHOP_INVOICE_CREATED":
+          case "FACTORY_INVOICE_CREATED":
+            return <FileText className="h-5 w-5 text-green-500" />;
+          case "PRODUCT_CREATED":
+          case "PRODUCT_UPDATED":
+            return <FileText className="h-5 w-5 text-blue-500" />;
+          case "FLAVOR_CREATED":
+            return <Package className="h-5 w-5 text-purple-500" />;
+          case "CATEGORY_CREATED":
+          case "CATEGORY_UPDATED":
+          case "CATEGORY_DEACTIVATED":
+            return <Settings className="h-5 w-5 text-gray-500" />;
+          case "LOGIN_SUCCESS":
+            return <Home className="h-5 w-5 text-green-600" />;
+          default:
+            return <Bell className="h-5 w-5 text-gray-500" />;
+        }
     }
   };
 
-  // Get notification priority color
-  const getNotificationPriorityColor = (type: string) => {
-    switch (type) {
-      case "LOW_STOCK_ALERT":
+  // Get notification priority color based on priority field
+  const getNotificationPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "CRITICAL":
         return "destructive";
-      case "RESTOCK_REQUEST":
+      case "HIGH":
+        return "destructive";
+      case "MEDIUM":
         return "secondary";
-      case "RESTOCK_REJECTED":
-        return "destructive";
-      case "RESTOCK_APPROVED":
-        return "default";
+      case "LOW":
+        return "outline";
       default:
         return "outline";
+    }
+  };
+
+  // Get category color
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case "INVENTORY":
+        return "bg-blue-100 text-blue-800";
+      case "BILLING":
+        return "bg-green-100 text-green-800";
+      case "RESTOCK":
+        return "bg-amber-100 text-amber-800";
+      case "SYSTEM":
+        return "bg-gray-100 text-gray-800";
+      case "CHAT":
+        return "bg-purple-100 text-purple-800";
+      case "FACTORY":
+        return "bg-indigo-100 text-indigo-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -170,6 +232,9 @@ export default function Notifications() {
       case "RESTOCK_REQUEST":
       case "RESTOCK_APPROVED":
       case "RESTOCK_REJECTED":
+      case "RESTOCK_FULFILLED":
+      case "RESTOCK_STATUS_UPDATED":
+      case "INVENTORY_ADD_REQUEST":
         return hasModuleAccess("Restock Management") ? "/restock-management" : null;
       case "PRODUCT_CREATED":
       case "PRODUCT_UPDATED":
@@ -178,6 +243,9 @@ export default function Notifications() {
       case "CATEGORY_UPDATED":
       case "CATEGORY_DEACTIVATED":
         return hasModuleAccess("Inventory") ? "/inventory" : null;
+      case "CHAT_MESSAGE":
+      case "CHAT_REQUEST":
+        return null; // Handle chat notifications specially - don't navigate
       case "LOGIN_SUCCESS":
       default:
         return null;
@@ -187,12 +255,25 @@ export default function Notifications() {
   // Handle notification click
   const handleNotificationClick = async (notification: any) => {
     try {
+      // Handle chat notifications specially
+      if (notification.type === 'CHAT_MESSAGE' || notification.type === 'CHAT_REQUEST') {
+        // Don't mark as read automatically - let user decide
+        // Trigger floating chat window
+        window.dispatchEvent(new CustomEvent('open-floating-chat'));
+        return;
+      }
+      
       if (!notification.isRead) {
         await markRead(notification.id);
       }
       const route = getNotificationRoute(notification.type);
       if (route) {
-        navigate(route);
+        // If the route is the notifications page, add highlight parameter
+        if (route === '/notifications') {
+          navigate(`/notifications?highlight=${notification.id}`);
+        } else {
+          navigate(route);
+        }
       }
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -203,7 +284,12 @@ export default function Notifications() {
   const handleGoToModule = (notification: any) => {
     const route = getNotificationRoute(notification.type);
     if (route) {
-      navigate(route);
+      // If the route is the notifications page, add highlight parameter
+      if (route === '/notifications') {
+        navigate(`/notifications?highlight=${notification.id}`);
+      } else {
+        navigate(route);
+      }
     }
   };
 
@@ -211,25 +297,16 @@ export default function Notifications() {
   const handleClearNotification = async (notification: any) => {
     try {
       await clearNotification(notification.id);
-      Swal.fire({
-        icon: "success",
+      toast({
         title: "Notification Cleared",
-        text: "The notification has been removed from your list.",
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: "top-end",
+        description: "The notification has been removed from your list.",
       });
     } catch (error) {
       console.error("Error clearing notification:", error);
-      Swal.fire({
-        icon: "error",
+      toast({
         title: "Error",
-        text: "Failed to clear notification. Please try again.",
-        timer: 3000,
-        showConfirmButton: false,
-        toast: true,
-        position: "top-end",
+        description: "Failed to clear notification. Please try again.",
+        variant: "destructive",
       });
     }
   };
@@ -237,45 +314,56 @@ export default function Notifications() {
   // Handle clear all notifications
   const handleClearAllNotifications = async () => {
     try {
-      const result = await Swal.fire({
-        title: "Clear All Notifications?",
-        text: "This will remove all notifications from your list. This action cannot be undone.",
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonColor: "#ef4444",
-        cancelButtonColor: "#6b7280",
-        confirmButtonText: "Yes, clear all",
-        cancelButtonText: "Cancel",
-      });
-
-      if (result.isConfirmed) {
+      if (window.confirm("Clear All Notifications?\n\nThis will remove all notifications from your list. This action cannot be undone.")) {
         await clearAllNotifications();
-        Swal.fire({
-          icon: "success",
+        toast({
           title: "All Notifications Cleared",
-          text: "All notifications have been removed from your list.",
-          timer: 2000,
-          showConfirmButton: false,
-          toast: true,
-          position: "top-end",
+          description: "All notifications have been removed from your list.",
         });
       }
     } catch (error) {
       console.error("Error clearing all notifications:", error);
-      Swal.fire({
-        icon: "error",
+      toast({
         title: "Error",
-        text: "Failed to clear notifications. Please try again.",
-        timer: 3000,
-        showConfirmButton: false,
-        toast: true,
-        position: "top-end",
+        description: "Failed to clear notifications. Please try again.",
+        variant: "destructive",
       });
     }
   };
 
-  // Get unique notification types for filter
+  // Get unique notification types and categories for filter
   const notificationTypes = [...new Set(notifications.map((n) => n.type))];
+  const notificationCategories = [...new Set(notifications.map((n) => n.category || "SYSTEM"))];
+  
+  // Get counts for each category
+  const getCategoryCount = (category: string) => {
+    return notifications.filter(n => {
+      const notificationCategory = n.category || "SYSTEM";
+      return category === "all" ? true :
+             notificationCategory === category ||
+             (category === "CHAT" && (notificationCategory === "CHAT" || n.type.includes("CHAT"))) ||
+             (category === "RESTOCK" && (notificationCategory === "RESTOCK" || n.type.includes("RESTOCK"))) ||
+             (category === "INVENTORY" && (notificationCategory === "INVENTORY" || n.type.includes("LOW_STOCK") || n.type.includes("PRODUCT"))) ||
+             (category === "BILLING" && (notificationCategory === "BILLING" || n.type.includes("INVOICE"))) ||
+             (category === "FACTORY" && (notificationCategory === "FACTORY" || n.type.includes("FACTORY"))) ||
+             (category === "SYSTEM" && notificationCategory === "SYSTEM");
+    }).length;
+  };
+  
+  const getUnreadCategoryCount = (category: string) => {
+    return notifications.filter(n => {
+      const notificationCategory = n.category || "SYSTEM";
+      const matchesCategory = category === "all" ? true :
+             notificationCategory === category ||
+             (category === "CHAT" && (notificationCategory === "CHAT" || n.type.includes("CHAT"))) ||
+             (category === "RESTOCK" && (notificationCategory === "RESTOCK" || n.type.includes("RESTOCK"))) ||
+             (category === "INVENTORY" && (notificationCategory === "INVENTORY" || n.type.includes("LOW_STOCK") || n.type.includes("PRODUCT"))) ||
+             (category === "BILLING" && (notificationCategory === "BILLING" || n.type.includes("INVOICE"))) ||
+             (category === "FACTORY" && (notificationCategory === "FACTORY" || n.type.includes("FACTORY"))) ||
+             (category === "SYSTEM" && notificationCategory === "SYSTEM");
+      return matchesCategory && !n.isRead;
+    }).length;
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -321,7 +409,7 @@ export default function Notifications() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
@@ -345,15 +433,16 @@ export default function Notifications() {
             
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {notificationTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
+                <SelectItem value="all">All Categories ({getCategoryCount("all")})</SelectItem>
+                <SelectItem value="CHAT">Chat ({getCategoryCount("CHAT")})</SelectItem>
+                <SelectItem value="RESTOCK">Restock ({getCategoryCount("RESTOCK")})</SelectItem>
+                <SelectItem value="INVENTORY">Inventory ({getCategoryCount("INVENTORY")})</SelectItem>
+                <SelectItem value="BILLING">Billing ({getCategoryCount("BILLING")})</SelectItem>
+                <SelectItem value="FACTORY">Factory ({getCategoryCount("FACTORY")})</SelectItem>
+                <SelectItem value="SYSTEM">System ({getCategoryCount("SYSTEM")})</SelectItem>
               </SelectContent>
             </Select>
             
@@ -398,15 +487,17 @@ export default function Notifications() {
                 highlightedNotificationId === notification.id 
                   ? "ring-4 ring-blue-500 ring-opacity-50 bg-blue-50 border-blue-300 animate-pulse" 
                   : ""
+              } ${
+                newNotifications.has(notification.id) && !notification.isRead
+                  ? "bg-green-50 border-l-green-500 shadow-lg" 
+                  : ""
               }`}
-              onClick={() => handleNotificationClick(notification)}
-              style={{ cursor: getNotificationRoute(notification.type) ? 'pointer' : 'default' }}
             >
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
                   {/* Icon and Status */}
                   <div className="flex-shrink-0">
-                    {getNotificationIcon(notification.type)}
+                    {getNotificationIcon(notification.type, notification.category || "SYSTEM")}
                     {!notification.isRead && (
                       <div className="w-2 h-2 bg-blue-500 rounded-full mx-auto mt-2 animate-pulse" />
                     )}
@@ -419,9 +510,12 @@ export default function Notifications() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-3">
-                        <Badge variant={getNotificationPriorityColor(notification.type)}>
-                          {notification.type.replace(/_/g, " ")}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <Badge className={getCategoryColor(notification.category || "SYSTEM")}>
+                          {notification.category || "SYSTEM"}
+                        </Badge>
+                        <Badge variant={getNotificationPriorityColor(notification.priority || "MEDIUM")}>
+                          {notification.priority || "MEDIUM"}
                         </Badge>
                         {!notification.isRead && (
                           <Badge variant="secondary" className="animate-pulse">
@@ -433,25 +527,62 @@ export default function Notifications() {
                             You're here!
                           </Badge>
                         )}
+                        {newNotifications.has(notification.id) && !notification.isRead && (
+                          <Badge variant="default" className="bg-green-500 text-white animate-pulse">
+                            New
+                          </Badge>
+                        )}
                       </div>
                       <span className="text-sm text-gray-500">
                         {new Date(notification.createdAt).toLocaleString()}
                       </span>
                     </div>
                     
-                    <p className="text-gray-800 text-base leading-relaxed mb-3">
-                      {notification.message}
-                    </p>
+                    <div className="mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {notification.type.replace(/_/g, " ")}
+                      </h3>
+                      <p className="text-gray-800 text-base leading-relaxed">
+                        {notification.message}
+                      </p>
+                    </div>
+
+                    {/* Detailed Information */}
+                    {notification.metadata && (
+                      <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Details:</h4>
+                        <div className="text-sm text-gray-600 space-y-1">
+                          {Object.entries(JSON.parse(notification.metadata)).map(([key, value]) => (
+                            <div key={key} className="flex justify-between">
+                              <span className="font-medium capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                              <span>{String(value)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Action Buttons */}
                     <div className="flex items-center gap-2">
+                      {!notification.isRead && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleNotificationClick(notification)}
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Mark as Read
+                        </Button>
+                      )}
+                      
                       {getNotificationRoute(notification.type) && (
                         <Tooltip title="Go to related module">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleGoToModule(notification)}
-                            className="text-blue-600 hover:text-blue-700"
+                            className="text-green-600 hover:text-green-700"
                           >
                             <ExternalLink className="h-4 w-4 mr-2" />
                             Go to Module

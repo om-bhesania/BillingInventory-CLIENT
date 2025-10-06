@@ -8,6 +8,9 @@ export type Notification = {
   message: string;
   isRead: boolean;
   createdAt: string;
+  category?: string;
+  priority?: string;
+  metadata?: any;
 };
 
 export async function fetchNotifications(): Promise<Notification[]> {

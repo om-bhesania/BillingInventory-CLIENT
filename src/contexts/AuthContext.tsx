@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 import { loginApi } from "@/apis/auth";
 import { logoutApi } from "@/apis/auth";
+import { refreshToken } from "@/apis/authApi";
 import {
   fetchRoles,
   Role,
@@ -17,6 +18,7 @@ import {
   isShopOwner as isShopOwnerRole,
 } from "@/services/rolesService";
 import { logger } from "@/utils/logger";
+import LoadingSpinner from "@/components/ui/Loader";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -77,21 +79,6 @@ function isTokenExpired(token: string | null): boolean {
   }
 }
 
-// Loading Spinner Component
-const LoadingSpinner = () => (
-  <div className="fixed inset-0 bg-white dark:bg-gray-900 flex items-center justify-center z-50">
-    <div className="flex flex-col items-center space-y-4">
-      <div className="relative">
-        <div className="w-12 h-12 rounded-full border-4 border-gray-200 dark:border-gray-700"></div>
-        <div className="absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
-      </div>
-      <p className="text-gray-600 dark:text-gray-300 text-sm font-medium">
-        Verifying authentication...
-      </p>
-    </div>
-  </div>
-);
-
 const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
@@ -137,7 +124,7 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const getUserShopIds = () => {
-    return user?.managedShops?.map(shop => shop.id) || [];
+    return user?.managedShops?.map((shop) => shop.id) || [];
   };
 
   const normalizeRoleName = (roleName: string): string => {
@@ -151,9 +138,6 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Comprehensive authentication verification
   const verifyUserAuthentication = async (userData: User, token: string) => {
     try {
-      console.log("Verifying user data:", userData);
-      console.log("Available roles:", roles);
-
       // Validate user has required properties
       if (!userData.id || !userData.role || !userData.email) {
         console.error("Missing required user properties:", {
@@ -240,33 +224,24 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (isTokenExpired(token)) {
           console.log("Token expired, attempting refresh...");
           try {
-            const response = await fetch("/api/auth/refresh", {
-              method: "POST",
-              credentials: "include",
-            });
+            const refreshData = await refreshToken();
+            sessionStorage.setItem("auth_token", refreshData.token);
+            sessionStorage.setItem(
+              "user_data",
+              JSON.stringify(refreshData.user)
+            );
 
-            if (response.ok) {
-              const refreshData = await response.json();
-              sessionStorage.setItem("auth_token", refreshData.token);
-              sessionStorage.setItem(
-                "user_data",
-                JSON.stringify(refreshData.user)
-              );
-
-              // Verify the refreshed user data (roles validation will be skipped if not loaded)
-              const isValid = await verifyUserAuthentication(
-                refreshData.user,
-                refreshData.token
-              );
-              if (isValid) {
-                console.log("Token refresh successful");
-                setIsAuthenticated(true);
-                setUser(refreshData.user);
-              } else {
-                throw new Error("Invalid refreshed user data");
-              }
+            // Verify the refreshed user data (roles validation will be skipped if not loaded)
+            const isValid = await verifyUserAuthentication(
+              refreshData.user,
+              refreshData.token
+            );
+            if (isValid) {
+              console.log("Token refresh successful");
+              setIsAuthenticated(true);
+              setUser(refreshData.user);
             } else {
-              throw new Error("Token refresh failed");
+              throw new Error("Invalid refreshed user data");
             }
           } catch (refreshError) {
             console.log("Token refresh failed:", refreshError);
@@ -315,28 +290,16 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       const token = sessionStorage.getItem("auth_token");
       if (token && isTokenExpired(token)) {
         try {
-          const response = await fetch("/api/auth/refresh", {
-            method: "POST",
-            credentials: "include",
-          });
+          const data = await refreshToken();
+          sessionStorage.setItem("auth_token", data.token);
+          sessionStorage.setItem("user_data", JSON.stringify(data.user));
 
-          if (response.ok) {
-            const data = await response.json();
-            sessionStorage.setItem("auth_token", data.token);
-            sessionStorage.setItem("user_data", JSON.stringify(data.user));
-
-            const isValid = await verifyUserAuthentication(
-              data.user,
-              data.token
-            );
-            if (isValid) {
-              setIsAuthenticated(true);
-              setUser(data.user);
-            } else {
-              throw new Error("Invalid auto-refreshed user data");
-            }
+          const isValid = await verifyUserAuthentication(data.user, data.token);
+          if (isValid) {
+            setIsAuthenticated(true);
+            setUser(data.user);
           } else {
-            throw new Error("Auto-refresh failed");
+            throw new Error("Invalid auto-refreshed user data");
           }
         } catch (error) {
           sessionStorage.removeItem("auth_token");
@@ -364,8 +327,11 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     window.addEventListener("auth:token-expired", handleAuthFailure);
-    return () =>
+    window.addEventListener("auth:invalid-token", handleAuthFailure);
+    return () => {
       window.removeEventListener("auth:token-expired", handleAuthFailure);
+      window.removeEventListener("auth:invalid-token", handleAuthFailure);
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -455,10 +421,23 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
     navigate("/login");
   };
 
-  // Show loading spinner until fully initialized
-  if (isLoading || !isInitialized) {
-    return <LoadingSpinner />;
-  }
+  // On invalid token, navigate to login with toast
+  useEffect(() => {
+    const onInvalid = () => {
+      Swal.fire({
+        icon: "error",
+        title: "Session expired",
+        text: "Invalid token. Please sign in again.",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 2500,
+      });
+      navigate("/login");
+    };
+    window.addEventListener("auth:invalid-token", onInvalid);
+    return () => window.removeEventListener("auth:invalid-token", onInvalid);
+  }, [navigate]);
 
   return (
     <AuthContext.Provider
@@ -479,7 +458,13 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
         isInitialized,
       }}
     >
+      {/* Always render children so hooks can access context. Show overlay while initializing. */}
       {children}
+      {(isLoading || !isInitialized) && (
+        <div className="fixed inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-[9998]">
+          <LoadingSpinner message="Verifying Authentication..." />
+        </div>
+      )}
     </AuthContext.Provider>
   );
 };

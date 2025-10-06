@@ -1,6 +1,10 @@
 import {
   createRestockRequest,
   getRestockRequests,
+  getAllRestockRequests,
+  approveRestockRequest,
+  rejectRestockRequest,
+  RestockRequest,
 } from "@/apis/restockRequestApi";
 import { getShop } from "@/apis/shopapi";
 import {
@@ -41,6 +45,7 @@ import { usePingUser } from "@/hooks/use-pingUser";
 import { useEffect, useState } from "react";
 import { service } from "@/services/service";
 import { API_URL } from "@/services/apiuri";
+import { getWebSocketService } from "@/services/websocketService";
 import Swal from "sweetalert2";
 import { useApi } from "@/hooks/useApi";
 import {
@@ -53,6 +58,9 @@ import {
   Package,
   TrendingDown,
   AlertTriangle,
+  RefreshCw,
+  CheckCircle,
+  X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -62,34 +70,28 @@ interface Shop {
 }
 
 function ShopInventoryList() {
-  const [inventory, setInventory] = useState<ShopInventoryItem[]>([]);
-  const [filteredInventory, setFilteredInventory] = useState<
-    ShopInventoryItem[]
-  >([]);
+  const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<RestockRequest[]>(
+    []
+  );
   const [shops, setShops] = useState<Shop[]>([]);
   const [selectedShopId, setSelectedShopId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
-  const [editingItem, setEditingItem] = useState<ShopInventoryItem | null>(
-    null
-  );
+  const [editingItem, setEditingItem] = useState<RestockRequest | null>(null);
   const [newStock, setNewStock] = useState<number>(0);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isRemoving, setIsRemoving] = useState<string | null>(null);
-  const [requestingItem, setRequestingItem] =
-    useState<ShopInventoryItem | null>(null);
-  const [requestQuantity, setRequestQuantity] = useState<number>(0);
-  const [requestNotes, setRequestNotes] = useState<string>("");
-  const [isRequesting, setIsRequesting] = useState<boolean>(false);
 
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState("");
-  const [stockFilter, setStockFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("productName");
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { toast } = useToast();
   const { user } = usePingUser();
+  const wsService = getWebSocketService();
 
   // Get user's shop IDs from ping data
   const userShopIds = user?.managedShops?.map((shop) => shop.id) || [];
@@ -99,30 +101,43 @@ function ShopInventoryList() {
     data: restockRequestsData,
     loading: restockRequestsLoading,
     error: restockRequestsError,
-    execute: fetchRestockRequests,
+    execute: fetchRestockRequestsForShop,
   } = useApi(API_URL.restockRequest.getByShopId(selectedShopId), "GET");
 
   useEffect(() => {
     console.log("shopData", restockRequestsData);
+    console.log("User data:", user);
+    console.log("User shop IDs:", userShopIds);
     const fetchShops = async () => {
       try {
         if (user?.role === "Shop_Owner") {
+          console.log("User is Shop Owner, managed shops:", user.managedShops);
           const userShops = user.managedShops || [];
           setShops(userShops as Shop[]);
+          // Set the first shop as selected for Shop Owner
           if (userShops.length > 0) {
             setSelectedShopId(userShops[0].id);
+            console.log(
+              "Fetching restock requests for shop owner shops:",
+              userShops.map((s: any) => s.id)
+            );
+            await fetchAllRestockRequests(userShops.map((s: any) => s.id));
           }
         } else {
+          console.log("User is Admin, fetching all shops");
           const shopsData: any = await getShop();
+          console.log("Fetched shops data:", shopsData);
           setShops(shopsData as Shop[]);
-
-          if (userShopIds.length > 0) {
-            setSelectedShopId(userShopIds[0]);
-          } else if (shopsData.length > 0) {
+          // Set the first shop as selected for Admin
+          if (shopsData && shopsData.length > 0) {
             setSelectedShopId(shopsData[0].id);
+            const ids = shopsData.map((s: any) => s.id);
+            console.log("Fetching restock requests for admin shops:", ids);
+            await fetchAllRestockRequests(ids);
           }
         }
       } catch (error) {
+        console.error("Error fetching shops:", error);
         toast({
           title: "Error",
           text: "Failed to fetch shops",
@@ -134,53 +149,199 @@ function ShopInventoryList() {
     if (user) {
       fetchShops();
     }
-  }, [user]); // Depend on user and userShopIds
+  }, [user]); // Add user as dependency
 
+  // Fetch restock requests when selectedShopId changes (fallback)
   useEffect(() => {
-    if (selectedShopId) {
-      fetchInventory();
-      // Fetch restock requests for the selected shop
+    if (selectedShopId && restockRequests.length === 0) {
+      console.log(
+        "No restock request data, fetching for selected shop:",
+        selectedShopId
+      );
       fetchRestockRequests();
     }
-  }, [selectedShopId, fetchRestockRequests]);
+  }, [selectedShopId]);
 
   useEffect(() => {
-    filterAndSortInventory();
-  }, [inventory, searchTerm, stockFilter, categoryFilter, sortBy, sortOrder]);
+    filterAndSortRequests();
+  }, [
+    restockRequests,
+    searchTerm,
+    statusFilter,
+    categoryFilter,
+    sortBy,
+    sortOrder,
+  ]);
 
-  const filterAndSortInventory = () => {
-    let filtered = [...inventory];
+  // WebSocket listeners for real-time updates
+  useEffect(() => {
+    const handleRestockRequestCreated = (data: any) => {
+      console.log('Restock request created:', data);
+      console.log('Data structure:', JSON.stringify(data, null, 2));
+      console.log('User shop IDs:', userShopIds);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        console.log('Shop ID from event:', shopId);
+        if (userShopIds.includes(shopId)) {
+          console.log('Shop ID matches, refreshing requests');
+          // Refresh the requests list to get the new request
+          handleRefresh();
+        } else {
+          console.log('Shop ID does not match user shops');
+        }
+      } else {
+        console.warn('No requestId found in restock request created event:', data);
+      }
+    };
+
+    const handleRestockRequestApproved = (data: any) => {
+      console.log('Restock request approved:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Update the specific request in the list
+          setRestockRequests(prev => prev.map(req => 
+            req.id === data.notification.data.requestId 
+              ? { ...req, status: 'pending', updatedAt: new Date().toISOString() }
+              : req
+          ));
+        }
+      }
+    };
+
+    const handleRestockRequestRejected = (data: any) => {
+      console.log('Restock request rejected:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Update the specific request in the list
+          setRestockRequests(prev => prev.map(req => 
+            req.id === data.notification.data.requestId 
+              ? { ...req, status: 'rejected', updatedAt: new Date().toISOString() }
+              : req
+          ));
+        }
+      }
+    };
+
+    const handleRestockRequestStatusUpdated = (data: any) => {
+      console.log('Restock request status updated:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Update the specific request in the list
+          setRestockRequests(prev => prev.map(req => 
+            req.id === data.notification.data.requestId 
+              ? { ...req, status: data.notification.data.status, updatedAt: new Date().toISOString() }
+              : req
+          ));
+        }
+      }
+    };
+
+    const handleRestockRequestFulfilled = (data: any) => {
+      console.log('Restock request fulfilled:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Update the specific request in the list
+          setRestockRequests(prev => prev.map(req => 
+            req.id === data.notification.data.requestId 
+              ? { ...req, status: 'fulfilled', updatedAt: new Date().toISOString() }
+              : req
+          ));
+        }
+      }
+    };
+
+    const handleRestockRequestHidden = (data: any) => {
+      console.log('Restock request hidden:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Remove the hidden request from the list
+          setRestockRequests(prev => prev.filter(req => req.id !== data.notification.data.requestId));
+        }
+      }
+    };
+
+    const handleRestockRequestAutoGenerated = (data: any) => {
+      console.log('Restock request auto generated:', data);
+      if (data.notification?.data?.requestId) {
+        // Check if this request belongs to user's shops
+        const shopId = data.notification?.data?.shopId;
+        if (userShopIds.includes(shopId)) {
+          // Refresh the requests list to get the new auto-generated request
+          handleRefresh();
+        }
+      }
+    };
+
+    // Subscribe to websocket events
+    wsService.on('restock_request_created', handleRestockRequestCreated);
+    wsService.on('restock_request_approved', handleRestockRequestApproved);
+    wsService.on('restock_request_rejected', handleRestockRequestRejected);
+    wsService.on('restock_request_status_updated', handleRestockRequestStatusUpdated);
+    wsService.on('restock_request_fulfilled', handleRestockRequestFulfilled);
+    wsService.on('restock_request_hidden', handleRestockRequestHidden);
+    wsService.on('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+
+    return () => {
+      // Cleanup listeners
+      wsService.off('restock_request_created', handleRestockRequestCreated);
+      wsService.off('restock_request_approved', handleRestockRequestApproved);
+      wsService.off('restock_request_rejected', handleRestockRequestRejected);
+      wsService.off('restock_request_status_updated', handleRestockRequestStatusUpdated);
+      wsService.off('restock_request_fulfilled', handleRestockRequestFulfilled);
+      wsService.off('restock_request_hidden', handleRestockRequestHidden);
+      wsService.off('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+    };
+  }, [wsService, userShopIds]);
+
+  const filterAndSortRequests = () => {
+    let filtered = [...restockRequests];
 
     // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter(
-        (item) =>
-          item.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          item.product.category.name
+        (request) =>
+          request.product.name
             .toLowerCase()
             .includes(searchTerm.toLowerCase()) ||
-          item.product.flavor.name
+          request.product.sku
             .toLowerCase()
-            .includes(searchTerm.toLowerCase())
+            .includes(searchTerm.toLowerCase()) ||
+          request.product.category.name
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          request.product.flavor.name
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          request.notes?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    // Apply stock filter
-    if (stockFilter !== "all") {
-      filtered = filtered.filter((item) => {
-        const status = getStockStatus(
-          item.currentStock,
-          item.product.minStockLevel
-        );
-        return status === stockFilter;
-      });
+    // Apply status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((request) => request.status === statusFilter);
     }
 
     // Apply category filter
     if (categoryFilter !== "all") {
       filtered = filtered.filter(
-        (item) => item.product.category.name === categoryFilter
+        (request) => request.product.category.name === categoryFilter
+      );
+    }
+    // If a shop is selected, filter client-side to that shop while still keeping aggregated requests loaded
+    if (selectedShopId) {
+      filtered = filtered.filter(
+        (request) => request.shopId === selectedShopId
       );
     }
 
@@ -194,29 +355,25 @@ function ShopInventoryList() {
           aValue = a.product.name;
           bValue = b.product.name;
           break;
-        case "currentStock":
-          aValue = a.currentStock;
-          bValue = b.currentStock;
+        case "requestedAmount":
+          aValue = a.requestedAmount;
+          bValue = b.requestedAmount;
           break;
-        case "unitPrice":
-          aValue = a.product.unitPrice;
-          bValue = b.product.unitPrice;
+        case "status":
+          aValue = a.status;
+          bValue = b.status;
           break;
         case "category":
           aValue = a.product.category.name;
           bValue = b.product.category.name;
           break;
-        case "lastRestockDate":
-          aValue = a.lastRestockDate
-            ? new Date(a.lastRestockDate)
-            : new Date(0);
-          bValue = b.lastRestockDate
-            ? new Date(b.lastRestockDate)
-            : new Date(0);
+        case "createdAt":
+          aValue = new Date(a.createdAt);
+          bValue = new Date(b.createdAt);
           break;
         default:
-          aValue = a.product.name;
-          bValue = b.product.name;
+          aValue = new Date(a.createdAt);
+          bValue = new Date(b.createdAt);
       }
 
       if (sortOrder === "asc") {
@@ -226,20 +383,60 @@ function ShopInventoryList() {
       }
     });
 
-    setFilteredInventory(filtered);
+    setFilteredRequests(filtered);
   };
 
-  const fetchInventory = async () => {
+  const fetchRestockRequests = async () => {
     if (!selectedShopId) return;
 
     setIsLoading(true);
     try {
-      const inventoryData = await getShopInventory(selectedShopId);
-      setInventory(inventoryData);
+      const requestsData = await getRestockRequests(selectedShopId);
+      setRestockRequests(requestsData);
     } catch (error) {
       toast({
         title: "Error",
-        text: "Failed to fetch inventory",
+        text: "Failed to fetch restock requests",
+        type: "error",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchAllRestockRequests = async (shopIds: string[]) => {
+    if (!Array.isArray(shopIds) || shopIds.length === 0) {
+      console.log("No shop IDs provided for fetching restock requests");
+      return;
+    }
+
+    console.log("Fetching restock requests for shops:", shopIds);
+    setIsLoading(true);
+    try {
+      const results = await Promise.all(
+        shopIds.map(async (id) => {
+          try {
+            console.log(`Fetching restock requests for shop ${id}`);
+            const requests = await getRestockRequests(id);
+            console.log(`Restock requests for shop ${id}:`, requests);
+            return requests || [];
+          } catch (error) {
+            console.error(
+              `Error fetching restock requests for shop ${id}:`,
+              error
+            );
+            return [];
+          }
+        })
+      );
+      const merged = ([] as any[]).concat(...results);
+      console.log("Merged restock requests data:", merged);
+      setRestockRequests(merged as RestockRequest[]);
+    } catch (error) {
+      console.error("Error in fetchAllRestockRequests:", error);
+      toast({
+        title: "Error",
+        text: "Failed to fetch restock requests",
         type: "error",
       });
     } finally {
@@ -257,11 +454,11 @@ function ShopInventoryList() {
       });
 
       // Update local state
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === editingItem.id
-            ? { ...item, currentStock: newStock }
-            : item
+      setRestockRequests((prev) =>
+        prev.map((request) =>
+          request.id === editingItem.id
+            ? { ...request, requestedAmount: newStock }
+            : request
         )
       );
 
@@ -310,7 +507,7 @@ function ShopInventoryList() {
           text: "Product removed from shop inventory",
           type: "success",
         });
-        fetchInventory();
+        fetchRestockRequests();
       } catch (error) {
         toast({
           title: "Error",
@@ -345,8 +542,8 @@ function ShopInventoryList() {
         allowEscapeKey: true,
       });
 
-      // Refresh the inventory list
-      fetchInventory();
+      // Refresh the restock requests list
+      fetchRestockRequests();
       // Also refresh restock requests so UI hides the Received button immediately
       fetchRestockRequests();
     } catch (error) {
@@ -361,51 +558,17 @@ function ShopInventoryList() {
     }
   };
 
-  // Function to check if there's a restock request in "in_transit" status for a product
-  const hasInTransitRequest = (productId: string) => {
+  // Function to check if there's a restock request in "pending" status for a product
+  const hasPendingRequest = (productId: string) => {
     if (!restockRequestsData || !Array.isArray(restockRequestsData))
       return false;
 
     return restockRequestsData.some(
       (request) =>
         request.productId === productId &&
-        request.status === "in_transit" &&
+        request.status === "pending" &&
         !request.hidden // Don't show for hidden requests
     );
-  };
-
-  const openRequestModal = (item: ShopInventoryItem) => {
-    setRequestingItem(item);
-    const defaultQty = Math.max((item.product.minStockLevel || 10) * 2, 1);
-    setRequestQuantity(defaultQty);
-    setRequestNotes("");
-  };
-
-  const submitRestockRequest = async () => {
-    if (!requestingItem || requestQuantity <= 0) return;
-    setIsRequesting(true);
-    try {
-      await createRestockRequest({
-        shopId: requestingItem.shopId,
-        productId: requestingItem.productId,
-        requestedAmount: requestQuantity,
-        notes: requestNotes?.trim() || undefined,
-      });
-      toast({
-        title: "Request submitted",
-        text: `Requested ${requestQuantity} units of ${requestingItem.product.name}`,
-        type: "success",
-      });
-      setRequestingItem(null);
-    } catch (error) {
-      toast({
-        title: "Error",
-        text: "Failed to create restock request",
-        type: "error",
-      });
-    } finally {
-      setIsRequesting(false);
-    }
   };
 
   const getStockStatus = (currentStock: number, minStockLevel?: number) => {
@@ -437,61 +600,149 @@ function ShopInventoryList() {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "waiting_for_approval":
+        return "bg-orange-500";
+      case "pending":
+        return "bg-yellow-500";
+      case "approved":
+        return "bg-blue-500";
+      case "fulfilled":
+        return "bg-green-500";
+      case "rejected":
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
+  const getStatusDisplayText = (status: string) => {
+    const displayTexts = {
+      waiting_for_approval: "Waiting for Approval",
+      pending: "Pending",
+      approved: "Approved",
+      fulfilled: "Fulfilled",
+      rejected: "Rejected",
+    };
+    return displayTexts[status as keyof typeof displayTexts] || status;
+  };
+
   const getUniqueCategories = () => {
-    const categories = inventory.map((item) => item.product.category.name);
+    const categories = restockRequests.map(
+      (request) => request.product.category.name
+    );
     return Array.from(new Set(categories));
   };
 
-  const viewProductDetails = (item: ShopInventoryItem) => {
-    const stockStatus = getStockStatus(
-      item.currentStock,
-      item.product.minStockLevel
-    );
+  const handleRefresh = async () => {
+    if (user?.role === "Shop_Owner") {
+      const userShops = user.managedShops || [];
+      if (userShops.length > 0) {
+        await fetchAllRestockRequests(userShops.map((s: any) => s.id));
+      }
+    } else {
+      const shopsData: any = await getShop();
+      if (shopsData && shopsData.length > 0) {
+        const ids = shopsData.map((s: any) => s.id);
+        await fetchAllRestockRequests(ids);
+      }
+    }
+  };
+
+  const testApiCall = async () => {
+    try {
+      console.log("Testing API call with shop ID:", selectedShopId);
+      const result = await getRestockRequests(selectedShopId);
+      console.log("API call result:", result);
+      toast({
+        title: "API Test",
+        text: `API returned ${
+          Array.isArray(result) ? result.length : "unknown"
+        } restock requests`,
+        type: "success",
+      });
+    } catch (error) {
+      console.error("API test error:", error);
+      toast({
+        title: "API Test Failed",
+        text: "Check console for details",
+        type: "error",
+      });
+    }
+  };
+
+  const handleApproveRequest = async (requestId: string) => {
+    try {
+      await approveRestockRequest(requestId);
+      toast({
+        title: "Success",
+        text: "Restock request approved",
+        type: "success",
+      });
+      // Refresh the list
+      handleRefresh();
+    } catch (error) {
+      toast({
+        title: "Error",
+        text: "Failed to approve request",
+        type: "error",
+      });
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      await rejectRestockRequest(requestId, { notes: "Rejected by admin" });
+      toast({
+        title: "Success",
+        text: "Restock request rejected",
+        type: "success",
+      });
+      // Refresh the list
+      handleRefresh();
+    } catch (error) {
+      toast({
+        title: "Error",
+        text: "Failed to reject request",
+        type: "error",
+      });
+    }
+  };
+
+  const viewRequestDetails = (request: RestockRequest) => {
+    const statusColor = getStatusColor(request.status);
+    const statusText =
+      request.status.charAt(0).toUpperCase() + request.status.slice(1);
 
     Swal.fire({
-      title: "Product Details",
+      title: "Restock Request Details",
       html: `
         <div class="text-left space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
               <h3 class="font-semibold text-gray-700">Product Information</h3>
-              <p><strong>Name:</strong> ${item.product.name}</p>
-              <p><strong>SKU:</strong> ${item.product.sku}</p>
-              <p><strong>Category:</strong> ${item.product.category.name}</p>
-              <p><strong>Flavor:</strong> ${item.product.flavor.name}</p>
-              <p><strong>Unit Price:</strong> ₹${item.product.unitPrice}</p>
+              <p><strong>Name:</strong> ${request.product.name}</p>
+              <p><strong>SKU:</strong> ${request.product.sku}</p>
+              <p><strong>Category:</strong> ${request.product.category.name}</p>
+              <p><strong>Flavor:</strong> ${request.product.flavor.name}</p>
             </div>
             <div>
-              <h3 class="font-semibold text-gray-700">Stock Information</h3>
-              <p><strong>Current Stock:</strong> ${item.currentStock} units</p>
-              <p><strong>Min Stock Level:</strong> ${
-                item.product.minStockLevel || "Not set"
-              }</p>
-              <p><strong>Status:</strong> <span class="px-2 py-1 rounded-full text-xs font-medium ${getStockStatusColor(
-                stockStatus
-              )} text-white">${getStockStatusText(stockStatus)}</span></p>
+              <h3 class="font-semibold text-gray-700">Request Information</h3>
+              <p><strong>Requested Amount:</strong> ${
+                request.requestedAmount
+              } units</p>
+              <p><strong>Status:</strong> <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColor} text-white">${statusText}</span></p>
+              <p><strong>Created:</strong> ${new Date(
+                request.createdAt
+              ).toLocaleDateString()}</p>
               ${
-                item.lastRestockDate
-                  ? `<p><strong>Last Restock:</strong> ${new Date(
-                      item.lastRestockDate
-                    ).toLocaleDateString()}</p>`
+                request.notes
+                  ? `<p><strong>Notes:</strong> ${request.notes}</p>`
                   : ""
               }
             </div>
           </div>
-          ${
-            hasInTransitRequest(item.product.id)
-              ? `
-            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <div class="flex items-center gap-2 text-blue-800">
-                <Package className="h-4 w-4" />
-                <span class="text-sm font-medium">Restock Request In Transit</span>
-              </div>
-              <p class="text-xs text-blue-600 mt-1">This product has a restock request that is currently being fulfilled.</p>
-            </div>
-          `
-              : ""
-          }
         </div>
       `,
       width: "600px",
@@ -500,10 +751,6 @@ function ShopInventoryList() {
       allowOutsideClick: true,
       allowEscapeKey: true,
       backdrop: true,
-      customClass: {
-        container: "swal2-custom-container",
-        popup: "swal2-custom-popup",
-      },
     });
   };
 
@@ -516,15 +763,33 @@ function ShopInventoryList() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Shop Inventory Management
+            {user?.role === "Shop_Owner"
+              ? "My Restock Requests"
+              : "Restock Request Management"}
           </h1>
           <p className="text-gray-600 mt-1">
-            Manage product inventory across different shops
+            {user?.role === "Shop_Owner"
+              ? "View and track your restock requests"
+              : "Review and manage restock requests from all shops"}
           </p>
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {filteredInventory.length} of {inventory.length} products
-        </Badge>
+        <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="flex items-center space-x-2"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+            />
+            <span>Refresh</span>
+          </Button>
+          <Badge variant="secondary" className="text-sm">
+            {filteredRequests.length} of {restockRequests.length} requests
+          </Badge>
+        </div>
       </div>
 
       {/* Shop Selection */}
@@ -571,16 +836,18 @@ function ShopInventoryList() {
               />
             </div>
 
-            {/* Stock Status Filter */}
-            <Select value={stockFilter} onValueChange={setStockFilter}>
+            {/* Status Filter */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Filter by stock" />
+                <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Stock Levels</SelectItem>
-                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-                <SelectItem value="low-stock">Low Stock</SelectItem>
-                <SelectItem value="normal">Normal Stock</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="waiting_for_approval">Waiting for Approval</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
 
@@ -607,10 +874,12 @@ function ShopInventoryList() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="productName">Product Name</SelectItem>
-                  <SelectItem value="currentStock">Current Stock</SelectItem>
-                  <SelectItem value="unitPrice">Unit Price</SelectItem>
+                  <SelectItem value="requestedAmount">
+                    Requested Amount
+                  </SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
                   <SelectItem value="category">Category</SelectItem>
-                  <SelectItem value="lastRestockDate">Last Restock</SelectItem>
+                  <SelectItem value="createdAt">Created Date</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -631,25 +900,42 @@ function ShopInventoryList() {
         </CardContent>
       </Card>
 
-      {/* Inventory Table */}
+      {/* Restock Requests Table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Inventory Items</CardTitle>
+          <CardTitle className="text-lg">Restock Requests</CardTitle>
         </CardHeader>
         <CardContent>
-          {filteredInventory.length === 0 ? (
+          {filteredRequests.length === 0 ? (
             <div className="text-center py-12">
               <Package className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-lg font-medium text-gray-900 mb-2">
-                {inventory.length === 0
-                  ? "No inventory found"
-                  : "No matching products"}
+                {restockRequests.length === 0
+                  ? "No restock requests found"
+                  : "No matching requests"}
               </p>
               <p className="text-gray-500">
-                {inventory.length === 0
-                  ? "Add products to this shop to get started."
+                {restockRequests.length === 0
+                  ? "Create restock requests to get started."
                   : "Try adjusting your search or filters."}
               </p>
+              {/* {restockRequests.length === 0 && (
+                <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    Debug Info: User role: {user?.role}, Selected shop:{" "}
+                    {selectedShopId}, Available shops: {shops.length}
+                  </p>
+                  <div className="flex gap-2 mt-2">
+                    <Button variant="outline" size="sm" onClick={handleRefresh}>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Try Refresh
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={testApiCall}>
+                      Test API
+                    </Button>
+                  </div>
+                </div>
+              )} */}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -658,63 +944,65 @@ function ShopInventoryList() {
                   <tr className="border-b">
                     <th className="text-left p-3 font-medium">Product</th>
                     <th className="text-left p-3 font-medium">Category</th>
-                    <th className="text-left p-3 font-medium">Stock</th>
-                    <th className="text-left p-3 font-medium">Price</th>
+                    <th className="text-left p-3 font-medium">
+                      Requested Amount
+                    </th>
                     <th className="text-left p-3 font-medium">Status</th>
+                    <th className="text-left p-3 font-medium">Created Date</th>
                     <th className="text-left p-3 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInventory.map((item) => {
-                    const stockStatus = getStockStatus(
-                      item.currentStock,
-                      item.product.minStockLevel
-                    );
+                  {filteredRequests.map((request) => {
+                    const statusColor = getStatusColor(request.status);
 
                     return (
-                      <tr key={item.id} className="border-b hover:bg-gray-50">
+                      <tr
+                        key={request.id}
+                        className="border-b hover:bg-gray-50"
+                      >
                         <td className="p-3">
                           <div>
                             <div className="font-medium">
-                              {item.product.name}
+                              {request.product.name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {item.product.sku} • {item.product.flavor.name}
+                              {request.product.sku} •{" "}
+                              {request.product.flavor.name}
                             </div>
                           </div>
                         </td>
                         <td className="p-3">
                           <div className="font-medium">
-                            {item.product.category.name}
+                            {request.product.category.name}
                           </div>
                         </td>
                         <td className="p-3">
                           <div className="font-medium">
-                            {item.currentStock} units
+                            {request.requestedAmount} units
                           </div>
-                          {item.product.minStockLevel && (
+                          {request.notes && (
                             <div className="text-sm text-gray-500">
-                              Min: {item.product.minStockLevel}
+                              Note: {request.notes}
                             </div>
                           )}
                         </td>
                         <td className="p-3">
-                          <div className="font-medium">
-                            ₹{item.product.unitPrice}
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${statusColor} text-white`}>
+                              {getStatusDisplayText(request.status)}
+                            </Badge>
+                            {request.status === "waiting_for_approval" && (
+                              <AlertTriangle className="h-4 w-4 text-orange-500 mt-1" />
+                            )}
                           </div>
                         </td>
                         <td className="p-3">
-                          <div className=" flex items-center gap-2">
-                            <Badge
-                              className={`${getStockStatusColor(
-                                stockStatus
-                              )} text-white`}
-                            >
-                              {getStockStatusText(stockStatus)}
-                            </Badge>
-                            {stockStatus === "low-stock" && (
-                              <AlertTriangle className="h-4 w-4 text-orange-500 mt-1" />
-                            )}
+                          <div className="text-sm text-gray-600">
+                            {new Date(request.createdAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {new Date(request.createdAt).toLocaleTimeString()}
                           </div>
                         </td>
                         <td className="p-3">
@@ -722,112 +1010,42 @@ function ShopInventoryList() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => viewProductDetails(item)}
+                              onClick={() => viewRequestDetails(request)}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
 
-                            {/* Update Stock Dialog */}
-                            <Dialog>
-                              <DialogTrigger asChild>
+                            {/* Approve Button - Admin Only */}
+                            {user?.role !== "Shop_Owner" &&
+                              request.status === "waiting_for_approval" && (
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => {
-                                    setEditingItem(item);
-                                    setNewStock(item.currentStock);
-                                  }}
+                                  onClick={() =>
+                                    handleApproveRequest(request.id)
+                                  }
+                                  className="text-green-600 hover:text-green-700"
                                 >
-                                  <Edit className="h-4 w-4" />
+                                  <CheckCircle className="h-4 w-4 mr-1" />
+                                  Approve
                                 </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>
-                                    Update Stock for {item.product.name}
-                                  </DialogTitle>
-                                  <DialogDescription>
-                                    Enter the new stock level for this product.
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div>
-                                    <Label htmlFor="new-stock">
-                                      New Stock Level
-                                    </Label>
-                                    <Input
-                                      id="new-stock"
-                                      type="number"
-                                      min="0"
-                                      value={newStock}
-                                      onChange={(e) =>
-                                        setNewStock(Number(e.target.value))
-                                      }
-                                    />
-                                  </div>
-                                  <div className="flex justify-end space-x-2">
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => setEditingItem(null)}
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      onClick={handleUpdateStock}
-                                      disabled={isUpdating}
-                                    >
-                                      {isUpdating
-                                        ? "Updating..."
-                                        : "Update Stock"}
-                                    </Button>
-                                  </div>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                              )}
 
-                            {/* Restock Request Button */}
-                            {(stockStatus === "low-stock" ||
-                              stockStatus === "out-of-stock") && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openRequestModal(item)}
-                                className="text-orange-600 hover:text-orange-700"
-                              >
-                                <TrendingDown className="h-4 w-4 mr-1" />
-                                Request Restock
-                              </Button>
-                            )}
-
-                            {/* Order Received Button */}
-                            {hasInTransitRequest(item.product.id) && (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() =>
-                                  handleOrderReceived(
-                                    selectedShopId,
-                                    item.product.id
-                                  )
-                                }
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                <Package className="h-4 w-4 mr-1" />
-                                Received
-                              </Button>
-                            )}
-
-                            {/* Remove Product Button */}
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handleRemoveProduct(item.id)}
-                              disabled={isRemoving === item.id}
-                            >
-                              {isRemoving === item.id
-                                ? "Removing..."
-                                : "Remove"}
-                            </Button>
+                            {/* Reject Button - Admin Only */}
+                            {user?.role !== "Shop_Owner" &&
+                              request.status === "waiting_for_approval" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleRejectRequest(request.id)
+                                  }
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Reject
+                                </Button>
+                              )}
                           </div>
                         </td>
                       </tr>
@@ -839,72 +1057,6 @@ function ShopInventoryList() {
           )}
         </CardContent>
       </Card>
-      {/* Create Restock Request Modal */}
-      <Dialog
-        open={!!requestingItem}
-        onOpenChange={(open) => !open && setRequestingItem(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restock Request</DialogTitle>
-            <DialogDescription>
-              {requestingItem
-                ? `Request additional units for ${requestingItem.product.name}`
-                : ""}
-            </DialogDescription>
-          </DialogHeader>
-          {requestingItem && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label>Current Stock</Label>
-                  <div className="mt-1 p-2 border rounded-md bg-gray-50">
-                    {requestingItem.currentStock}
-                  </div>
-                </div>
-                <div>
-                  <Label>Min Stock Level</Label>
-                  <div className="mt-1 p-2 border rounded-md bg-gray-50">
-                    {requestingItem.product.minStockLevel ?? "Not set"}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="request-qty">Requested Quantity</Label>
-                <Input
-                  id="request-qty"
-                  type="number"
-                  min={1}
-                  value={requestQuantity}
-                  onChange={(e) =>
-                    setRequestQuantity(Math.max(Number(e.target.value || 0), 1))
-                  }
-                />
-              </div>
-              <div>
-                <Label htmlFor="request-notes">Notes (optional)</Label>
-                <Textarea
-                  id="request-notes"
-                  placeholder="Add any instructions or context"
-                  value={requestNotes}
-                  onChange={(e) => setRequestNotes(e.target.value)}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setRequestingItem(null)}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={submitRestockRequest} disabled={isRequesting}>
-                  {isRequesting ? "Submitting..." : "Submit Request"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

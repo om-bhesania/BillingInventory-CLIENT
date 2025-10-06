@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { TrendChart, BarChart, DoughnutChart, SalesTrendChart } from "./index";
 import {
   transformCategoryData,
@@ -18,7 +19,7 @@ import {
   forecastStockouts,
 } from "@/lib/enhancedAnalytics";
 import { DashboardMetrics } from "@/apis/dashboardApi";
-import { DateRange } from "@/components/ui/DateRangePicker";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { EnhancedKPICard } from "@/components/ui/EnhancedKPICard";
 import { BusinessInsights } from "@/components/ui/BusinessInsights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,26 +40,33 @@ import {
   Filter,
   AlertTriangle,
 } from "lucide-react";
-import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { ChartErrorBoundary } from "./ChartErrorBoundary";
+import useDashboard from "@/hooks/use-getDashboardData";
 
 interface EnhancedAnalyticsDashboardProps {
-  metrics: DashboardMetrics["metrics"];
-  role: "Admin" | "Shop_Owner";
+  metrics?: DashboardMetrics["metrics"];
+  role?: "Admin" | "Shop_Owner";
   className?: string;
 }
 
 export const EnhancedAnalyticsDashboard: React.FC<
   EnhancedAnalyticsDashboardProps
-> = ({ metrics, role, className = "" }) => {
-  const [dateRange, setDateRange] = useState<DateRange>(() => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return { from: startOfMonth, to: now };
-  });
+> = ({ metrics: propMetrics, role: propRole, className = "" }) => {
+  // Use the dashboard hook
+  const {
+    dashboardData,
+    dateRange,
+    isRefreshing,
+    isAdmin,
+    handleDateRangeChange,
+    handleManualRefresh,
+  } = useDashboard();
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [previousPeriod, setPreviousPeriod] = useState<DateRange | null>(null);
+  // Use metrics from props or hook data, prefer props for flexibility
+  const metrics = propMetrics || dashboardData?.metrics;
+  const role = propRole || (isAdmin ? "Admin" : "Shop_Owner");
+
+  const [previousPeriod, setPreviousPeriod] = useState<any>(null);
 
   // Calculate previous period when date range changes
   useEffect(() => {
@@ -66,6 +74,28 @@ export const EnhancedAnalyticsDashboard: React.FC<
       setPreviousPeriod(calculatePreviousPeriod(dateRange));
     }
   }, [dateRange]);
+
+  // Early return if no metrics
+  if (!metrics) {
+    return (
+      <div className={cn("space-y-6", className)}>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-8">
+              <BarChart3 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-2">
+                No Analytics Data Available
+              </h3>
+              <p className="text-muted-foreground mb-4">
+                Analytics data is not available. Please check back later or
+                contact support.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Transform data for charts
   const categoryData = transformCategoryData(metrics);
@@ -117,7 +147,7 @@ export const EnhancedAnalyticsDashboard: React.FC<
     topProducts,
     metrics.currentStockLevels?.lowStockItems || []
   );
-
+  console.log("stockoutForecasts", stockoutForecasts);
   const formatCurrency = (amount: unknown, debugKey?: string) => {
     // Normalize: allow raw numbers, numeric strings with commas/currency symbols
     let numericValue: number;
@@ -130,7 +160,10 @@ export const EnhancedAnalyticsDashboard: React.FC<
 
     if (!Number.isFinite(numericValue)) {
       if (process.env.NODE_ENV !== "production") {
-        console.log("formatCurrency: invalid amount", { key: debugKey, amount });
+        console.log("formatCurrency: invalid amount", {
+          key: debugKey,
+          amount,
+        });
       }
       return "₹0";
     }
@@ -141,18 +174,6 @@ export const EnhancedAnalyticsDashboard: React.FC<
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(numericValue);
-  };
-
-  const handleDateRangeChange = (newRange: DateRange) => {
-    setDateRange(newRange);
-    // In a real app, you would fetch new data here
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 1000);
-  };
-
-  const handleRefresh = () => {
-    setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 1000);
   };
 
   const handleExport = () => {
@@ -192,11 +213,11 @@ export const EnhancedAnalyticsDashboard: React.FC<
             <Button
               variant="outline"
               size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
             >
               <RefreshCw
-                className={cn("h-4 w-4", isLoading && "animate-spin")}
+                className={cn("h-4 w-4", isRefreshing && "animate-spin")}
               />
               Refresh
             </Button>
@@ -700,16 +721,16 @@ export const EnhancedAnalyticsDashboard: React.FC<
                     </Badge>
                     <div>
                       <p className="font-medium">
-                        Product {forecast.productId}
+                        Product {forecast.productName}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {forecast.daysUntilStockout} days until stockout
                       </p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Link to={`/shop-inventory/add?itemId=${forecast.productId}`}>
                     Restock Now
-                  </Button>
+                  </Link>
                 </div>
               ))}
             </div>

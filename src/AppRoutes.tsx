@@ -3,32 +3,38 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { DashboardLayout } from "./components/ui/dashboard/layout";
 import { useAuth } from "./contexts/AuthContext";
-import Dashboard from "./pages/Dashboard";
-import EmployeeForm from "./pages/employees/EmployeeForm";
-import EmployeeList from "./pages/employees/EmployeeList";
-import InventoryForm from "./pages/inventory/InventoryForm";
-import InventoryList from "./pages/inventory/InventoryList";
-import InvoiceForm from "./pages/invoices/InvoiceForm";
-import InvoiceList from "./pages/invoices/InvoiceList";
-import NotFound from "./pages/NotFound";
-import ShopInventoryForm from "./pages/ShopInventory/ShopInventoryForm";
-import ShopInventoryList from "./pages/ShopInventory/ShopInventoryList";
-import ShopForm from "./pages/shops/ShopForm";
-import ShopList from "./pages/shops/ShopList";
-import UnauthorizedAccess from "./pages/UnauthorizedAccess";
-import RestockManagement from "./pages/RestockManagement";
-import Notifications from "./pages/Notifications";
-import AuditLog from "./pages/AuditLog";
-import LowStockAlerts from "./pages/LowStockAlerts";
+import LazyRoute from "./components/LazyRoute";
 import { usePermissions } from "./contexts/PermissionsContext";
+import LoadingSpinner from "./components/ui/Loader";
 
-// Loading Component
-const LoadingSpinner = () => (
-  <div className="flex items-center justify-center min-h-screen">
-    <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
-  </div>
-);
+// Lazy-loaded components
+import {
+  Dashboard,
+  EmployeeForm,
+  EmployeeList,
+  InventoryForm,
+  InventoryList,
+  InventoryView,
+  InvoiceForm,
+  InvoiceList,
+  NotFound,
+  Tickets,
+  ShopInventoryForm,
+  ShopInventoryList,
+  ShopForm,
+  ShopList,
+  UnauthorizedAccess,
+  RestockManagement,
+  Notifications,
+  AuditLog,
+  LowStockAlerts,
+  SearchPage,
+  DatabaseMonitoring,
+  CacheManagement,
+  EnhancedDatePickerDemo
+} from "./pages/lazy";
 
+ 
 // Types
 interface RoutePermission {
   module: string;
@@ -62,26 +68,38 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
     userPermissions,
   } = usePermissions();
 
-  // Enhanced debugging
-  console.log("=== RoleBasedRoute Debug Info ===");
-  console.log("Required permissions:", requiredPermissions);
-  console.log("Auth loading:", authLoading);
-  console.log("Auth initialized:", isInitialized);
-  console.log("Permissions loading:", permissionsLoading);
-  console.log("User:", user);
-  console.log("User permissions:", userPermissions);
-  console.log("RequireAll:", requireAll);
+  // Enhanced debugging - disabled for production
+  // console.log("=== RoleBasedRoute Debug Info ===");
+  // console.log("Required permissions:", requiredPermissions);
+  // console.log("Auth loading:", authLoading);
+  // console.log("Auth initialized:", isInitialized);
+  // console.log("Permissions loading:", permissionsLoading);
+  // console.log("User:", user);
+  // console.log("User permissions:", userPermissions);
+  // console.log("RequireAll:", requireAll);
 
   // Show loading while authentication or permissions are being fetched
   if (authLoading || permissionsLoading || !isInitialized) {
-    console.log("Still loading - showing spinner");
-    return <LoadingSpinner />;
+    return (
+      <div className="fixed inset-0 bg-white dark:bg-gray-900 flex items-center justify-center z-50">
+        <LoadingSpinner />
+      </div>
+    );
   }
 
   // If auth is complete but no user, redirect to login
   if (!user) {
-    console.log("No user found after auth loading complete - redirecting to login");
     return <Navigate to="/login" replace />;
+  }
+
+  // Special handling for Dashboard route - if user is authenticated, allow access
+  // This prevents the "Access Denied" issue for the main dashboard
+  const isDashboardRoute = requiredPermissions.some(perm => 
+    perm.module === "Dashboard" && perm.action === "read"
+  );
+
+  if (isDashboardRoute) {
+    return <>{children}</>;
   }
 
   // Test the permission functions
@@ -89,15 +107,12 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
   const hasAccessAll = hasAllPermissions(requiredPermissions);
   const hasAccess = requireAll ? hasAccessAll : hasAccessAny;
 
-  console.log("hasAnyPermission result:", hasAccessAny);
-  console.log("hasAllPermissions result:", hasAccessAll);
-  console.log("Final hasAccess:", hasAccess);
-  console.log("=== End Debug Info ===");
-
   if (hasAccess) {
     return <>{children}</>;
   }
 
+  // Show UnauthorizedAccess page instead of redirecting
+  // This prevents unwanted redirects on refresh
   return <UnauthorizedAccess />;
 };
 
@@ -201,6 +216,11 @@ const AppRoutes: React.FC = () => {
       permissions: [{ module: "Shop Inventory", action: "read" }],
     },
     {
+      path: "/inventory-view",
+      element: <InventoryView />,
+      permissions: [{ module: "Shop Inventory", action: "read" }],
+    },
+    {
       path: "/shop-inventory/add",
       element: <ShopInventoryForm />,
       permissions: [{ module: "Shop Inventory", action: "write" }],
@@ -213,6 +233,16 @@ const AppRoutes: React.FC = () => {
         { module: "Shop Inventory", action: "update" },
       ],
       requireAll: true,
+    },
+    {
+      path: "/inventory/view",
+      element: <InventoryView />,
+      permissions: [{ module: "Shop Inventory", action: "read" }],
+    },
+    {
+      path: "/tickets",
+      element: <Tickets />,
+      permissions: [{ module: "Support", action: "read" }],
     },
 
     // Restock Management Routes (Admin Only)
@@ -242,6 +272,27 @@ const AppRoutes: React.FC = () => {
       element: <LowStockAlerts />,
       permissions: [{ module: "Low Stock Alerts", action: "read" }],
     },
+
+    // Global Search Route
+    {
+      path: "/search",
+      element: <SearchPage />,
+      permissions: [{ module: "Search", action: "read" }],
+    },
+
+    // Database Monitoring Route (Admin Only)
+    {
+      path: "/database-monitoring",
+      element: <DatabaseMonitoring />,
+      permissions: [{ module: "Database Monitoring", action: "read" }],
+    },
+
+    // Cache Management Route (Admin Only)
+    {
+      path: "/cache-management",
+      element: <CacheManagement />,
+      permissions: [{ module: "Cache Management", action: "read" }],
+    },
   ];
 
   return (
@@ -257,12 +308,26 @@ const AppRoutes: React.FC = () => {
                 requiredPermissions={route.permissions}
                 requireAll={route.requireAll}
               >
-                <DashboardLayout>{route.element}</DashboardLayout>
+                <DashboardLayout>
+                  <LazyRoute loadingMessage={`Loading ${route.path.replace('/', '')}...`}>
+                    {route.element}
+                  </LazyRoute>
+                </DashboardLayout>
               </RoleBasedRoute>
             }
           />
         ))}
       </Route>
+
+      {/* Demo Routes */}
+      <Route 
+        path="/demo/enhanced-date-picker" 
+        element={
+          <DashboardLayout>
+            <EnhancedDatePickerDemo />
+          </DashboardLayout>
+        } 
+      />
 
       {/* Catch all route */}
       <Route path="*" element={<NotFound />} />

@@ -452,12 +452,16 @@ export const forecastStockouts = (
   daysToForecast: number = 30
 ): Array<{
   productId: string;
+  productName: string;
   daysUntilStockout: number;
   risk: "high" | "medium" | "low";
+  currentStock: number;
+  dailySales: number;
 }> => {
   const forecasts = [];
 
   products.forEach((product) => {
+    console.log("product", product?.product?.name);
     const stockItem = currentStock.find(
       (item) => item.productId === product.productId
     );
@@ -474,12 +478,18 @@ export const forecastStockouts = (
     if (daysUntilStockout <= daysToForecast) {
       forecasts.push({
         productId: product.productId,
+        productName:
+          product.product?.productName ||
+          product.product?.name ||
+          "Unknown Product",
         daysUntilStockout: Math.floor(daysUntilStockout),
         risk,
+        currentStock: stockItem.currentStock,
+        dailySales: Math.round(dailySales * 100) / 100, // Round to 2 decimal places
       });
     }
   });
-
+  console.log("forecasts", forecasts);
   return forecasts.sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
 };
 

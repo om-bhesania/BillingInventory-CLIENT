@@ -50,8 +50,10 @@ export const getAuditLog = async (params?: {
   page?: number;
   limit?: number;
   type?: string;
+  shopId?: string;
   startDate?: string;
   endDate?: string;
+  search?: string;
 }) => {
   const response = await service({
     url: API_URL.auditLog.list,

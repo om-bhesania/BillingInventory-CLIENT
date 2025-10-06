@@ -3,6 +3,7 @@ import { service } from "@/services/service";
 
 export interface BillingItem {
   productId: string;
+  productName?: string;
   quantity: number;
   unitPrice: number;
   total: number;
@@ -19,6 +20,7 @@ export interface Billing {
   discount: number;
   total: number;
   paymentStatus: "pending" | "paid" | "failed";
+  invoiceNumber?: string;
   createdAt: string;
   updatedAt: string;
   shop: {

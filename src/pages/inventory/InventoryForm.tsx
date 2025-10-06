@@ -28,6 +28,7 @@ import CategoriesSelect from "./components/CategoriesSelect";
 import FlavorSelect from "./components/FlavourSelect";
 import PackagingTypeSelect from "./components/PackagingTypeSelect";
 import { getPackagingTypes, addPackagingType } from "@/apis/packagingTypeApi";
+import LoadingSpinner from "@/components/ui/Loader";
 
 const packagingTypes = [
   { value: "cup", label: "Cup" },
@@ -47,6 +48,7 @@ const InventoryForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = !!id;
+  const [IsdataLoading, setIsdataLoading] = useState(false);
   const [flavours, setFlavours] = useState([]);
   const [categories, setCategories] = useState([]);
   const [packagingTypesList, setPackagingTypesList] = useState<any[]>([]);
@@ -82,6 +84,16 @@ const InventoryForm = () => {
       .min(0, "Must be zero or positive")
       .max(1000000, "Price seems unusually high")
       .required("Unit price is required"),
+    costPrice: Yup.number()
+      .typeError("Enter a valid cost price")
+      .min(0, "Must be zero or positive")
+      .max(1000000, "Cost price seems unusually high")
+      .required("Cost price is required"),
+    retailPrice: Yup.number()
+      .typeError("Enter a valid retail price")
+      .min(0, "Must be zero or positive")
+      .max(1000000, "Retail price seems unusually high")
+      .required("Retail price is required"),
     totalStock: Yup.number()
       .typeError("Enter a whole number")
       .integer("Must be a whole number")
@@ -108,6 +120,8 @@ const InventoryForm = () => {
     unitSize: "",
     unitMeasurement: "",
     unitPrice: "",
+    costPrice: "",
+    retailPrice: "",
     totalStock: "",
     minStockLevel: "",
     barcode: "",
@@ -124,8 +138,14 @@ const InventoryForm = () => {
     enableReinitialize: true, // This will cause formik to reset when initialValues change
     onSubmit: async (values) => {
       try {
+        setIsdataLoading(true);
         let response;
-        const formData = { ...values };
+        const formData = { ...values } as any;
+
+        // Guard against invalid foreign keys leaking into submission
+        if (!formData.packagingTypeId) {
+          delete formData.packagingTypeId;
+        }
 
         if (isEditing) {
           const productId = id.replace("id=", "");
@@ -163,6 +183,8 @@ const InventoryForm = () => {
           }`,
           type: "error",
         });
+      } finally {
+        setIsdataLoading(false);
       }
     },
   });
@@ -199,6 +221,8 @@ const InventoryForm = () => {
           unitSize: product.unitSize || "",
           unitMeasurement: product.unitMeasurement || "",
           unitPrice: product.unitPrice || "",
+          costPrice: product.costPrice || "",
+          retailPrice: product.retailPrice || "",
           totalStock: product.totalStock || "",
           minStockLevel: product.minStockLevel || "",
           barcode: product.barcode || "",
@@ -268,6 +292,25 @@ const InventoryForm = () => {
     formik.setFieldValue("sku", `SKU-${randomString}`);
   };
 
+  // Auto-fill SKU when product name changes
+  const handleProductNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const productName = e.target.value;
+    formik.setFieldValue("name", productName);
+    
+    // Auto-generate SKU based on product name if SKU is empty
+    if (!formik.values.sku && productName) {
+      const skuPrefix = productName
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .substring(0, 3)
+        .toUpperCase();
+      const randomSuffix = Math.random()
+        .toString(36)
+        .substring(2, 6)
+        .toUpperCase();
+      formik.setFieldValue("sku", `${skuPrefix}-${randomSuffix}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <>
@@ -334,6 +377,7 @@ const InventoryForm = () => {
                     id="name"
                     name="name"
                     {...formik.getFieldProps("name")}
+                    onChange={handleProductNameChange}
                     placeholder="e.g. Choco Chip Cone"
                   />
                   {formik.touched.name && formik.errors.name && (
@@ -508,7 +552,7 @@ const InventoryForm = () => {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="grid gap-2">
-                  <Label htmlFor="unitPrice">Unit Price (₹) *</Label>
+                  <Label htmlFor="unitPrice">MRP/Unit Price (₹) *</Label>
                   <Input
                     id="unitPrice"
                     name="unitPrice"
@@ -523,9 +567,52 @@ const InventoryForm = () => {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Retail price including taxes (if applicable).
+                    Maximum Retail Price (MRP) - the selling price for individual products.
                   </p>
                 </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="costPrice">Cost Price (₹) *</Label>
+                  <Input
+                    id="costPrice"
+                    name="costPrice"
+                    type="number"
+                    step="0.01"
+                    {...formik.getFieldProps("costPrice")}
+                    placeholder="80.00"
+                  />
+                  {formik.touched.costPrice && formik.errors.costPrice && (
+                    <p className="text-sm text-red-500">
+                      {formik.errors.costPrice}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Manufacturing cost per unit - what it costs to make this product.
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="retailPrice">Retail Price (₹) *</Label>
+                  <Input
+                    id="retailPrice"
+                    name="retailPrice"
+                    type="number"
+                    step="0.01"
+                    {...formik.getFieldProps("retailPrice")}
+                    placeholder="120.00"
+                  />
+                  {formik.touched.retailPrice && formik.errors.retailPrice && (
+                    <p className="text-sm text-red-500">
+                      {formik.errors.retailPrice}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Actual selling price to customers (usually same as MRP).
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
 
                 <div className="grid gap-2">
                   <Label htmlFor="totalStock">Total Stock *</Label>
@@ -637,8 +724,13 @@ const InventoryForm = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isLoading}>
-                  {isEditing ? "Save Changes" : "Create Product"}
+                <Button
+                  type="submit"
+                  disabled={isLoading || IsdataLoading}
+                  className="flex items-center justify-center"
+                  loading={IsdataLoading}
+                >
+                  {isEditing ? "Save Changes" : "Create Product"}{" "}
                 </Button>
               </div>
             </div>
@@ -692,9 +784,9 @@ const InventoryForm = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-muted-foreground">Unit Price</div>
+                    <div className="text-muted-foreground">MRP</div>
                     <div className="font-medium">
-                      {formik.values.unitPrice || "—"}
+                      ₹{formik.values.unitPrice || "—"}
                     </div>
                   </div>
                   <div>
@@ -704,6 +796,28 @@ const InventoryForm = () => {
                     </Badge>
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-muted-foreground">Cost Price</div>
+                    <div className="font-medium">
+                      ₹{formik.values.costPrice || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Retail Price</div>
+                    <div className="font-medium">
+                      ₹{formik.values.retailPrice || "—"}
+                    </div>
+                  </div>
+                </div>
+                {formik.values.costPrice && formik.values.retailPrice && (
+                  <div>
+                    <div className="text-muted-foreground">Profit per Unit</div>
+                    <div className="font-medium text-green-600">
+                      ₹{(Number(formik.values.retailPrice) - Number(formik.values.costPrice)).toFixed(2)}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

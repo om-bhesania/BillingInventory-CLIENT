@@ -12,6 +12,20 @@ export interface DashboardMetrics {
       growth: number;
       previousPeriod: number;
     };
+    // New revenue metrics
+    realRevenue?: {
+      totalRevenue: number;
+      totalProfit: number;
+      totalBills: number;
+      revenueByShop: Record<string, number>;
+      lastUpdated: string;
+    };
+    totalItemsWorth?: {
+      totalItemsWorth: number;
+      totalRequests: number;
+      itemsWorthByShop: Record<string, number>;
+      lastUpdated: string;
+    };
     totalShops?: {
       total: number;
       growth: number;
@@ -299,6 +313,35 @@ export const getRealTimeChartData = async (lastUpdate?: string): Promise<any> =>
 
   const response = await service<any>({
     url: `${API_URL.dashboard.realtime}?${params.toString()}`,
+    method: "GET",
+  });
+  return response;
+};
+
+// Get total revenue from all shop billings (real revenue)
+export const getTotalRevenue = async (): Promise<{
+  totalRevenue: number;
+  totalProfit: number;
+  totalBills: number;
+  revenueByShop: Record<string, number>;
+  lastUpdated: string;
+}> => {
+  const response = await service<any>({
+    url: `${API_URL.base}/api/products/total-revenue`,
+    method: "GET",
+  });
+  return response;
+};
+
+// Get total items worth from restock requests (inventory tracking)
+export const getTotalItemsWorth = async (): Promise<{
+  totalItemsWorth: number;
+  totalRequests: number;
+  itemsWorthByShop: Record<string, number>;
+  lastUpdated: string;
+}> => {
+  const response = await service<any>({
+    url: `${API_URL.base}/api/products/total-items-worth`,
     method: "GET",
   });
   return response;

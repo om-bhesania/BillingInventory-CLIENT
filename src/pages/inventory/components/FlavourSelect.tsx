@@ -2,12 +2,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
  
 
 const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
   const [showNewFlavorInput, setShowNewFlavorInput] = useState(false);
   const [newFlavorName, setNewFlavorName] = useState("");
   const [lastAddedFlavorId, setLastAddedFlavorId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Effect to select the newly added flavor once it's available in the flavours list
   useEffect(() => {
@@ -30,9 +32,8 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
           name: newFlavorName,
         };
 
-        // Set a temporary value while the API call is in progress
-        formik.setFieldValue("flavorId", "adding...");
-
+        // Do not set placeholder values that could leak into submission
+        setIsSubmitting(true);
         const res = await addFlavours(newFlavor);
         console.log("res", res);
 
@@ -51,6 +52,8 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
     } catch (error) {
       console.error("Error adding flavor:", error);
       return false;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -72,8 +75,13 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
             }
           }}
         >
-          <SelectTrigger id="flavorId">
-            <SelectValue placeholder="Select flavor" />
+          <SelectTrigger id="flavorId" disabled={isSubmitting}>
+            <div className="flex items-center gap-2">
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : null}
+              <SelectValue placeholder="Select flavor" />
+            </div>
           </SelectTrigger>
           <SelectContent>
             {flavours.map((flavor) => (
@@ -100,6 +108,7 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
                 variant="secondary"
                 size="xs"
                 onClick={handleFlavourCancel}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
@@ -108,8 +117,15 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
                 variant="default"
                 size="xs"
                 onClick={handleAddNewFlavor}
+                disabled={isSubmitting}
               >
-                Add
+                {isSubmitting ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Adding...
+                  </span>
+                ) : (
+                  "Add"
+                )}
               </Button>
             </div>
           }

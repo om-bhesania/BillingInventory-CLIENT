@@ -2,23 +2,33 @@ import { deleteProduct, getProducts } from "@/apis/productapis";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import Table from "@/components/ui/table";
-import useToast  from "@/hooks/use-toast";
+import useToast from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { InvoiceColumns } from "./Columns";
+import { Link } from "react-router-dom"; 
+import { InventoryColumns } from "./Columns";
+ 
 
 const InventoryList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
   const fetchProductsData = async () => {
     try {
-      const response: any = await getProducts();
+      setLoading(true);
+      setError(null);
+      const response = await getProducts();
       console.log("product Data", response);
-      setInventory(response);
-    } catch {
-      return false;
+      setInventory(Array.isArray(response) ? response : []);
+    } catch (err) {
+      console.error("Error fetching products:", err);
+      setError("Failed to load products");
+      setInventory([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -28,8 +38,8 @@ const InventoryList = () => {
 
   const filteredInventory = inventory.filter(
     (item) =>
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase())
+      item?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item?.sku?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleDelete = async (id: string) => {
@@ -62,139 +72,43 @@ const InventoryList = () => {
             Manage your ice cream inventory across all shops
           </p>
         </div>
-        <Button asChild>
-          <Link to="/inventory/add">
-            <Plus className="mr-2 h-4 w-4" /> Add New Item
-          </Link>
-        </Button>
+        <Link to="/inventory/add">
+          <Plus className="mr-2 h-4 w-4" /> Add New Item
+        </Link>
       </div>
 
       <Separator className="my-6" />
-      {/* 
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1 md:max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search inventory..."
-            className="pl-8"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="ml-auto flex">
-              <Filter className="mr-2 h-4 w-4" /> Filter
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuLabel>Filter by</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal">
-              Category
-            </DropdownMenuLabel>
-            <DropdownMenuItem className="flex items-center gap-2">
-              Fruit Flavored
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal">
-              Status
-            </DropdownMenuLabel>
-            <DropdownMenuItem className="flex items-center gap-2">
-              In Stock
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex items-center gap-2">
-              Low Stock
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex items-center gap-2">
-              Out of Stock
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div> */}
 
       <div className="mt-6">
-        <Table
-          columns={InvoiceColumns(handleDelete)}
-          data={filteredInventory}
+        <input
+          type="text"
+          placeholder="Search by name or SKU..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border rounded px-3 py-2 mb-4 w-full md:w-1/3"
         />
-        {/* <Table column={columns} data={}/> */}
-        {/* <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Flavour</TableHead>
-              <TableHead className="text-center">Total Stock</TableHead>
-              <TableHead className="text-center">Min Stock</TableHead>
-              <TableHead className="text-center">Unit Price (₹)</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-center">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredInventory.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-40 text-center">
-                  No inventory items found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredInventory.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">
-                    {filteredInventory.indexOf(item) + 1}
-                  </TableCell>
-                  <TableCell>{item.name}</TableCell>
-                  <TableCell>{item.sku}</TableCell>
-                  <TableCell>{item.category.name}</TableCell>
-                  <TableCell>{item.flavor.name}</TableCell>
-                  <TableCell className="text-center">
-                    {item.totalStock}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {item.minStockLevel}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {item.unitPrice.toFixed(2)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        item.totalStock < item.minStockLevel
-                          ? "destructive"
-                          : "secondary"
-                      }
-                    >
-                      {item.totalStock < item.minStockLevel
-                        ? "Low Stock"
-                        : "In Stock"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex justify-end space-x-2">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link to={`/inventory/edit/id=${item.id}`}>
-                          <span className="sr-only">Edit</span>
-                          <PencilIcon />
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        <span className="sr-only">Delete</span>
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody> */}
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+              <p className="mt-2 text-sm text-gray-600">Loading products...</p>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={fetchProductsData} variant="outline">
+                Try Again
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Table
+            columns={InventoryColumns(handleDelete)}
+            data={filteredInventory}
+          />
+        )}
       </div>
     </>
   );

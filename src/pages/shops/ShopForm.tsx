@@ -95,6 +95,10 @@ const shopValidationSchema = Yup.object({
     .max(new Date(), "Opening date cannot be in the future"),
 
   isActive: Yup.boolean(),
+
+  publicId: Yup.string()
+    .required("Shop Owner/Manager is required")
+    .max(100, "Public ID must be less than 100 characters"),
 });
 
 interface ShopFormValues {
@@ -131,14 +135,18 @@ const ShopForm = () => {
       try {
         logger.data.fetch("employees", "Fetching employee data for shop form");
         const response: any = await getEmployee();
+        // Handle both direct array response and response.data structure
+        const employees = Array.isArray(response) ? response : (response?.data || []);
+        
         logger.data.success(
           "employees",
-          `Loaded ${Array.isArray(response) ? response.length : 0} employees`
+          `Loaded ${employees.length} employees`
         );
-        if (Array.isArray(response) && response.length > 0) {
-          logger.debug("Employee data sample", response[0]);
+        if (employees.length > 0) {
+          logger.debug("Employee data sample", employees[0]);
         }
-        setEmployeeData(response);
+        console.log("response for employee get api =====>", response);
+        setEmployeeData(employees);
       } catch (error) {
         logger.data.error("employees", error);
         return false;
@@ -186,6 +194,24 @@ const ShopForm = () => {
     { setSubmitting, resetForm }: any
   ) => {
     try {
+      console.log("=== FORM SUBMISSION DEBUG ===");
+      console.log("Form values received:", values);
+      console.log("publicId value:", values.publicId);
+      console.log("managerName value:", values.managerName);
+      console.log("EmployeeData available:", EmployeeData.length, "employees");
+      
+      // Check if publicId is empty
+      if (!values.publicId || values.publicId === "") {
+        console.error("Form submission blocked: publicId is required but empty");
+        toast({
+          title: "Validation Error",
+          description: "Please select a Shop Owner/Manager before submitting.",
+          variant: "destructive",
+        });
+        setSubmitting(false);
+        return;
+      }
+      
       // Convert empty string to null for optional fields
       const submitData = {
         ...values,
@@ -205,18 +231,21 @@ const ShopForm = () => {
 
       // Ensure managerName is set based on selected manager/owner
       let finalManagerName = values.managerName;
-      console.log("finalManagerName"), finalManagerName;
+      console.log("Form submission - values.publicId:", values.publicId);
+      console.log("Form submission - values.managerName:", values.managerName);
+      console.log("Form submission - finalManagerName:", finalManagerName);
       if (!finalManagerName && values.publicId) {
         const selectedPublicId = values.publicId;
         const selectedEmployee = EmployeeData.find(
-          (emp: any) => emp.publicId === selectedPublicId
+          (emp: any) => (emp.publicId || emp.id) === selectedPublicId
         );
         console.log("selectedEmployee", selectedEmployee);
         if (selectedEmployee) {
           finalManagerName = selectedEmployee.name;
         }
       }
-
+console.log("submitData", submitData);
+console.log("values.publicId", values.publicId);
       logger.form.submit("ShopForm", {
         ...submitData,
         // ownerId: values.ownerId || undefined,
@@ -260,6 +289,8 @@ const ShopForm = () => {
         title: "Error While Creating Shop",
         text: `${error?.response?.data?.error || "something went wrong"}`,
         type: "error",
+        // Duration will be automatically set to 8 seconds for error type
+        // Pause on hover is automatically enabled
       });
     } finally {
       setSubmitting(false);
@@ -281,6 +312,8 @@ const ShopForm = () => {
         title: "Error",
         text: `Failed to delete shop. ${error.message}`,
         type: "error",
+        // Duration will be automatically set to 8 seconds for error type
+        // Pause on hover is automatically enabled
       });
     }
   };
@@ -306,7 +339,7 @@ const ShopForm = () => {
         onSubmit={handleSubmit}
         enableReinitialize
       >
-        {({ values, setFieldValue, isSubmitting, errors, touched }) => (
+        {({ values, setFieldValue, isSubmitting, errors, touched, isValid }) => (
           <Form className="space-y-8">
             {/* Basic Information */}
             <div className="grid gap-6 sm:grid-cols-2">
@@ -408,12 +441,29 @@ const ShopForm = () => {
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <p className="text-xs text-blue-800">
                     <strong>Note:</strong>
-                    {EmployeeData.filter((i: any) => i.role === "Shop Owner")
+                    {EmployeeData.filter((i: any) => i.role === "Shop_Owner")
                       .length || 0}{" "}
                     user(s) available for selection. Users must be created first
                     in the Employees section before they can be assigned as shop
                     owners or managers.
                   </p>
+                  {EmployeeData.filter((i: any) => i.role === "Shop_Owner" && i.managedShops?.length > 0).length > 0 && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      <strong>Currently managing shops:</strong>{" "}
+                      {EmployeeData
+                        .filter((i: any) => i.role === "Shop_Owner" && i.managedShops?.length > 0)
+                        .map((emp: any) => `${emp.name} (${emp.managedShops.length})`)
+                        .join(", ")}
+                    </p>
+                  )}
+                  {/* Debug info */}
+                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <strong>Debug:</strong> publicId = "{values.publicId}", managerName = "{values.managerName}"
+                    <br />
+                    <strong>Form Status:</strong> isValid = {isValid ? "true" : "false"}, errors = {JSON.stringify(errors)}
+                    <br />
+                    <strong>Available Employees:</strong> {EmployeeData.filter((i: any) => i.role === "Shop_Owner" || i.role === "Shop Owner").length}
+                  </div>
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -424,46 +474,68 @@ const ShopForm = () => {
                         (only users with Role "Shop Owner" are visible here)
                       </span>{" "}
                     </Label>
-                    <Select
-                      value={values.publicId?.toString() || ""}
-                      onValueChange={(value) => {
-                        setFieldValue("publicId", value);
-                        // Auto-populate managerName when manager is selected
-                        if (value && value !== "no-employees") {
-                          const selectedManager = EmployeeData.find(
-                            (emp: any) => emp.publicId === value
-                          );
+                    <Field name="publicId">
+                      {({ field, form }: any) => (
+                        <Select
+                          value={field.value?.toString() || ""}
+                          onValueChange={(value) => {
+                            console.log("Select onValueChange called with value:", value);
+                            console.log("Current field.value:", field.value);
+                            console.log("Form values before update:", form.values);
+                            
+                            // Set the publicId field
+                            form.setFieldValue("publicId", value);
+                            
+                            // Auto-populate managerName when manager is selected
+                            if (value && value !== "no-employees") {
+                              const selectedManager = EmployeeData.find(
+                                (emp: any) => (emp.publicId || emp.id) === value
+                              );
+                              console.log("Selected manager:", selectedManager);
 
-                          if (selectedManager) {
-                            setFieldValue("managerName", selectedManager.name);
-                          }
-                        } else {
-                          setFieldValue("managerName", "");
-                        }
-                      }}
-                    >
-                      <SelectTrigger id="publicId">
-                        <SelectValue placeholder="Select Shop Owner" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {EmployeeData && EmployeeData.length > 0 ? (
-                          EmployeeData.filter(
-                            (i) => i.role === "Shop Owner"
-                          ).map((employee) => (
-                            <SelectItem
-                              key={employee.id}
-                              value={employee.publicId}
-                            >
-                              {employee.name} ({employee.role || "no role"})
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="no-employees" disabled>
-                            No Shop Owner users available
-                          </SelectItem>
-                        )}
-                      </SelectContent>
-                    </Select>
+                              if (selectedManager) {
+                                form.setFieldValue("managerName", selectedManager.name);
+                                console.log("Set managerName to:", selectedManager.name);
+                              }
+                            } else {
+                              form.setFieldValue("managerName", "");
+                            }
+                            
+                            // Force form validation
+                            form.validateField("publicId");
+                            console.log("Form values after update:", form.values);
+                            console.log("Form errors after update:", form.errors);
+                          }}
+                        >
+                          <SelectTrigger id="publicId">
+                            <SelectValue placeholder="Select Shop Owner" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {EmployeeData && EmployeeData.length > 0 ? (
+                              EmployeeData.filter(
+                                (i) => i.role === "Shop_Owner" || i.role === "Shop Owner"
+                              )                              .map((employee) => (
+                                <SelectItem
+                                  key={employee.id}
+                                  value={employee.publicId || employee.id}
+                                >
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{employee.name}</span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {employee.email} • {employee.role} • {employee.managedShops?.length || 0} shops
+                                    </span>
+                                  </div>
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value="no-employees" disabled>
+                                No Shop Owner users available
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </Field>
                     <ErrorMessage
                       name="publicId"
                       component="div"

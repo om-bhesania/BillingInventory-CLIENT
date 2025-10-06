@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useLocation, Link } from "react-router-dom";
 import {
   HomeIcon,
@@ -15,12 +15,18 @@ import {
   Menu,
   FileText,
   AlertTriangle,
+  Search,
+  Database,
+  Zap,
+  MessageCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useSidebarNotifications } from "@/hooks/useSidebarNotifications";
+import { NotificationBadge } from "@/components/ui/notification-badge";
 
 interface NavItem {
   title: string;
@@ -38,8 +44,9 @@ const Sidebar: React.FC = () => {
   }>({});
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const location = useLocation();
-  const { user, logout } = useAuth();
-  const { hasPermission, isModuleAccessible } = usePermissions();
+  const { user, logout, isLoading: authLoading, isInitialized } = useAuth();
+  const { hasPermission, isModuleAccessible, isLoading: permissionsLoading } = usePermissions();
+  const notificationCounts = useSidebarNotifications();
 
   // Navigation with permissions info
   const navItems: NavItem[] = [
@@ -48,6 +55,27 @@ const Sidebar: React.FC = () => {
       href: "/",
       icon: HomeIcon,
       module: "Dashboard",
+      requiredActions: ["read"],
+    },
+    {
+      title: "Search",
+      href: "/search",
+      icon: Search,
+      module: "Search",
+      requiredActions: ["read"],
+    },
+    {
+      title: "Database Monitoring",
+      href: "/database-monitoring",
+      icon: Database,
+      module: "Database Monitoring",
+      requiredActions: ["read"],
+    },
+    {
+      title: "Cache Management",
+      href: "/cache-management",
+      icon: Zap,
+      module: "Cache Management",
       requiredActions: ["read"],
     },
     {
@@ -136,6 +164,13 @@ const Sidebar: React.FC = () => {
           module: "Shop",
           requiredActions: ["write"],
         },
+        {
+          title: "Inventory View",
+          href: "/inventory/view",
+          icon: PackageIcon,
+          module: "Shop Inventory",
+          requiredActions: ["read"],
+        },
       ],
     },
     {
@@ -145,7 +180,7 @@ const Sidebar: React.FC = () => {
       requiredActions: ["read"],
       children: [
         {
-          title: "View Shop Inventory",
+          title: "Live Request Status",
           href: "/shop-inventory",
           icon: EyeIcon,
           module: "Shop Inventory",
@@ -160,7 +195,13 @@ const Sidebar: React.FC = () => {
         },
       ],
     },
-
+    {
+      title: "Inventory View",
+      href: "/inventory/view",
+      icon: Database,
+      module: "Shop Inventory",
+      requiredActions: ["read"],
+    },
     {
       title: "Restock Management",
       icon: PackageIcon,
@@ -184,13 +225,29 @@ const Sidebar: React.FC = () => {
       ],
     },
 
-    // {
-    //   title: "Audit Log",
-    //   icon: FileText,
-    //   href: "/audit-log",
-    //   module: "Audit Log",
-    //   requiredActions: ["read"],
-    // },
+    {
+      title: "Support Tickets",
+      icon: MessageCircle,
+      module: "Support",
+      requiredActions: ["read"],
+      children: [
+        {
+          title: "Manage Tickets",
+          href: "/tickets",
+          icon: MessageCircle,
+          module: "Support",
+          requiredActions: ["read"],
+        },
+      ],
+    },
+
+    {
+      title: "Audit Log",
+      icon: FileText,
+      href: "/audit-log",
+      module: "Audit Log",
+      requiredActions: ["read"],
+    },
   ];
 
   // Check if user has all required actions for item
@@ -201,8 +258,14 @@ const Sidebar: React.FC = () => {
     );
   };
 
-  // Filter nav items recursively
-  const getFilteredNavItems = (): NavItem[] => {
+  // Filter nav items recursively - memoized to prevent unnecessary re-renders
+  const getFilteredNavItems = useMemo((): NavItem[] => {
+    // Show loading state or return empty if still loading
+    if (authLoading || permissionsLoading || !isInitialized) {
+      return [];
+    }
+
+    // If no user after loading is complete, return empty
     if (!user) return [];
 
     const filterNavItem = (item: NavItem): NavItem | null => {
@@ -222,7 +285,7 @@ const Sidebar: React.FC = () => {
     };
 
     return navItems.map(filterNavItem).filter((i): i is NavItem => i !== null);
-  };
+  }, [authLoading, permissionsLoading, isInitialized, user, hasPermission, isModuleAccessible]);
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -233,6 +296,24 @@ const Sidebar: React.FC = () => {
   const NavItemComponent = ({ item }: { item: NavItem }) => {
     const isExpanded = expandedItems[item.title] || false;
     const hasActiveChild = item.children?.some((child) => isActive(child.href));
+
+    // Get notification count for this module
+    const getNotificationCount = (module: string) => {
+      switch (module) {
+        case "Billing":
+          return notificationCounts.invoices;
+        case "Restock Management":
+          return notificationCounts.restock;
+        case "Support":
+          return notificationCounts.support;
+        case "Shop Inventory":
+          return notificationCounts.lowStock;
+        default:
+          return 0;
+      }
+    };
+
+    const notificationCount = getNotificationCount(item.module || "");
 
     return (
       <div className="w-full">
@@ -246,9 +327,10 @@ const Sidebar: React.FC = () => {
                   "bg-accent/50 text-accent-foreground"
               )}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 relative">
                 {item.icon && <item.icon className="h-4 w-4" />}
                 <span>{item.title}</span>
+                <NotificationBadge count={notificationCount} size="sm" />
               </div>
               {isExpanded ? (
                 <ChevronUp className="h-4 w-4" />
@@ -258,21 +340,25 @@ const Sidebar: React.FC = () => {
             </button>
             {isExpanded && (
               <div className="ml-6 mt-1 space-y-1">
-                {item.children.map((child) => (
-                  <Link
-                    key={child.title}
-                    to={child.href || "#"}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50",
-                      isActive(child.href) &&
-                        "bg-accent/50 text-accent-foreground"
-                    )}
-                    onClick={() => setIsMobileOpen(false)}
-                  >
-                    <div className="h-1 w-1 rounded-full bg-current" />
-                    <span>{child.title}</span>
-                  </Link>
-                ))}
+                {item.children.map((child) => {
+                  const childNotificationCount = getNotificationCount(child.module || "");
+                  return (
+                    <Link
+                      key={child.title}
+                      to={child.href || "#"}
+                      className={cn(
+                        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50 relative",
+                        isActive(child.href) &&
+                          "bg-accent/50 text-accent-foreground"
+                      )}
+                      onClick={() => setIsMobileOpen(false)}
+                    >
+                      <div className="h-1 w-1 rounded-full bg-current" />
+                      <span>{child.title}</span>
+                      <NotificationBadge count={childNotificationCount} size="sm" />
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -280,26 +366,62 @@ const Sidebar: React.FC = () => {
           <Link
             to={item.href || "#"}
             className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50",
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50 relative",
               isActive(item.href) && "bg-accent/50 text-accent-foreground"
             )}
             onClick={() => setIsMobileOpen(false)}
           >
             {item.icon && <item.icon className="h-4 w-4" />}
             <span>{item.title}</span>
+            <NotificationBadge count={notificationCount} size="sm" />
           </Link>
         )}
       </div>
     );
   };
 
-  const renderNavItems = () => (
-    <div className="flex w-full flex-col gap-1">
-      {getFilteredNavItems().map((item) => (
-        <NavItemComponent key={item.title} item={item} />
-      ))}
-    </div>
-  );
+  const renderNavItems = () => {
+    // Show loading state while authentication is loading
+    if (authLoading || permissionsLoading || !isInitialized) {
+      return (
+        <div className="flex w-full flex-col gap-1">
+          <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium">
+            <div className="h-4 w-4 animate-pulse bg-gray-300 rounded"></div>
+            <div className="h-4 w-24 animate-pulse bg-gray-300 rounded"></div>
+          </div>
+          <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium">
+            <div className="h-4 w-4 animate-pulse bg-gray-300 rounded"></div>
+            <div className="h-4 w-32 animate-pulse bg-gray-300 rounded"></div>
+          </div>
+          <div className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium">
+            <div className="h-4 w-4 animate-pulse bg-gray-300 rounded"></div>
+            <div className="h-4 w-28 animate-pulse bg-gray-300 rounded"></div>
+          </div>
+        </div>
+      );
+    }
+
+    const filteredItems = getFilteredNavItems;
+    
+    // If no items after loading, show a message
+    if (filteredItems.length === 0) {
+      return (
+        <div className="flex w-full flex-col gap-1">
+          <div className="text-sm text-muted-foreground px-3 py-2">
+            No navigation items available
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex w-full flex-col gap-1">
+        {filteredItems.map((item) => (
+          <NavItemComponent key={item.title} item={item} />
+        ))}
+      </div>
+    );
+  };
   return (
     <>
       <div className="hidden h-screen w-64 flex-col border-r bg-background p-4 md:flex">

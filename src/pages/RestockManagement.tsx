@@ -2,13 +2,40 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { service } from "@/services/service";
 import { API_URL } from "@/services/apiuri";
+import { getWebSocketService } from "@/services/websocketService";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import LoadingSpinner from "@/components/ui/Loader";
-import { Trash2, Eye, Edit, Search, Filter, SortAsc, SortDesc, EyeOff } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Trash2,
+  Eye,
+  Edit,
+  Search,
+  Filter,
+  SortAsc,
+  SortDesc,
+  EyeOff,
+  CheckCircle,
+  X,
+} from "lucide-react";
 import Swal from "sweetalert2";
 
 interface RestockRequest {
@@ -16,7 +43,8 @@ interface RestockRequest {
   shopId: string;
   productId: string;
   requestedAmount: number;
-  status: string;
+  status: "waiting_for_approval" | "approved_pending" | "fulfilled" | "rejected" | "pending" | "approved";
+  requestType?: 'RESTOCK' | 'INVENTORY_ADD';
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -41,13 +69,29 @@ interface RestockRequest {
 const RestockManagement: React.FC = () => {
   const { user } = useAuth();
   const [requests, setRequests] = useState<RestockRequest[]>([]);
-  const [filteredRequests, setFilteredRequests] = useState<RestockRequest[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<RestockRequest[]>(
+    []
+  );
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [shopFilter, setShopFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const wsService = getWebSocketService();
+  
+  // Status update dialog state
+  const [statusUpdateDialog, setStatusUpdateDialog] = useState<{
+    open: boolean;
+    request: RestockRequest | null;
+    newStatus: string;
+    notes: string;
+  }>({
+    open: false,
+    request: null,
+    newStatus: "",
+    notes: "",
+  });
 
   // Check if user is Admin
   if (!user || user.role !== "Admin") {
@@ -56,8 +100,12 @@ const RestockManagement: React.FC = () => {
         <Card className="w-96">
           <CardContent className="pt-6">
             <div className="text-center">
-              <h2 className="text-2xl font-bold text-red-600 mb-4">Access Denied</h2>
-              <p className="text-gray-600">You need Admin privileges to access this page.</p>
+              <h2 className="text-2xl font-bold text-red-600 mb-4">
+                Access Denied
+              </h2>
+              <p className="text-gray-600">
+                You need Admin privileges to access this page.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -72,6 +120,104 @@ const RestockManagement: React.FC = () => {
   useEffect(() => {
     filterAndSortRequests();
   }, [requests, searchTerm, statusFilter, shopFilter, sortBy, sortOrder]);
+
+  // WebSocket listeners for real-time updates
+  useEffect(() => {
+    const handleRestockRequestCreated = (data: any) => {
+      console.log('Restock request created:', data);
+      console.log('Data structure:', JSON.stringify(data, null, 2));
+      if (data.notification?.data?.requestId) {
+        // Refresh the requests list to get the new request
+        fetchRequests();
+      } else {
+        console.warn('No requestId found in restock request created event:', data);
+      }
+    };
+
+    const handleRestockRequestApproved = (data: any) => {
+      console.log('Restock request approved:', data);
+      if (data.notification?.data?.requestId) {
+        // Update the specific request in the list
+        setRequests(prev => prev.map(req => 
+          req.id === data.notification.data.requestId 
+            ? { ...req, status: 'approved', updatedAt: new Date().toISOString() }
+            : req
+        ));
+      }
+    };
+
+    const handleRestockRequestRejected = (data: any) => {
+      console.log('Restock request rejected:', data);
+      if (data.notification?.data?.requestId) {
+        // Update the specific request in the list
+        setRequests(prev => prev.map(req => 
+          req.id === data.notification.data.requestId 
+            ? { ...req, status: 'rejected', updatedAt: new Date().toISOString() }
+            : req
+        ));
+      }
+    };
+
+    const handleRestockRequestStatusUpdated = (data: any) => {
+      console.log('Restock request status updated:', data);
+      if (data.notification?.data?.requestId) {
+        // Update the specific request in the list
+        setRequests(prev => prev.map(req => 
+          req.id === data.notification.data.requestId 
+            ? { ...req, status: data.notification.data.status, updatedAt: new Date().toISOString() }
+            : req
+        ));
+      }
+    };
+
+    const handleRestockRequestFulfilled = (data: any) => {
+      console.log('Restock request fulfilled:', data);
+      if (data.notification?.data?.requestId) {
+        // Update the specific request in the list
+        setRequests(prev => prev.map(req => 
+          req.id === data.notification.data.requestId 
+            ? { ...req, status: 'fulfilled', updatedAt: new Date().toISOString() }
+            : req
+        ));
+      }
+    };
+
+    const handleRestockRequestHidden = (data: any) => {
+      console.log('Restock request hidden:', data);
+      if (data.notification?.data?.requestId) {
+        // Remove the hidden request from the list
+        setRequests(prev => prev.filter(req => req.id !== data.notification.data.requestId));
+      }
+    };
+
+    const handleRestockRequestAutoGenerated = (data: any) => {
+      console.log('Restock request auto generated:', data);
+      if (data.notification?.data?.requestId) {
+        // Refresh the requests list to get the new auto-generated request
+        fetchRequests();
+      }
+    };
+
+    // Subscribe to websocket events
+    wsService.on('restock_request_created', handleRestockRequestCreated);
+    wsService.on('restock_request_approved', handleRestockRequestApproved);
+    wsService.on('restock_request_rejected', handleRestockRequestRejected);
+    wsService.on('restock_request_status_updated', handleRestockRequestStatusUpdated);
+    wsService.on('restock_request_fulfilled', handleRestockRequestFulfilled);
+    wsService.on('restock_request_hidden', handleRestockRequestHidden);
+    wsService.on('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+
+    return () => {
+      // Cleanup listeners
+      wsService.off('restock_request_created', handleRestockRequestCreated);
+      wsService.off('restock_request_approved', handleRestockRequestApproved);
+      wsService.off('restock_request_rejected', handleRestockRequestRejected);
+      wsService.off('restock_request_status_updated', handleRestockRequestStatusUpdated);
+      wsService.off('restock_request_fulfilled', handleRestockRequestFulfilled);
+      wsService.off('restock_request_hidden', handleRestockRequestHidden);
+      wsService.off('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+    };
+  }, [wsService]);
 
   const fetchRequests = async () => {
     try {
@@ -100,7 +246,9 @@ const RestockManagement: React.FC = () => {
     if (searchTerm) {
       filtered = filtered.filter(
         (request) =>
-          request.product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          request.product.name
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
           request.shop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           request.product.sku.toLowerCase().includes(searchTerm.toLowerCase())
       );
@@ -161,23 +309,44 @@ const RestockManagement: React.FC = () => {
     setFilteredRequests(filtered);
   };
 
-  const handleStatusUpdate = async (requestId: string, newStatus: string, notes?: string) => {
+  const openStatusUpdateDialog = (request: RestockRequest) => {
+    setStatusUpdateDialog({
+      open: true,
+      request,
+      newStatus: request.status,
+      notes: "",
+    });
+  };
+
+  const closeStatusUpdateDialog = () => {
+    setStatusUpdateDialog({
+      open: false,
+      request: null,
+      newStatus: "",
+      notes: "",
+    });
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!statusUpdateDialog.request) return;
+
     try {
       await service({
-        url: API_URL.restockRequest.updateStatus(requestId),
+        url: API_URL.restockRequest.updateStatus(statusUpdateDialog.request.id),
         method: "PATCH",
         data: {
-          status: newStatus,
-          notes,
+          status: statusUpdateDialog.newStatus,
+          notes: statusUpdateDialog.notes || undefined,
         },
       });
 
       Swal.fire({
         icon: "success",
         title: "Status Updated",
-        text: `Restock request status updated to ${newStatus}`,
+        text: `Restock request status updated to ${statusUpdateDialog.newStatus}`,
       });
 
+      closeStatusUpdateDialog();
       fetchRequests(); // Refresh the list
     } catch (error) {
       console.error("Error updating status:", error);
@@ -208,8 +377,12 @@ const RestockManagement: React.FC = () => {
         });
 
         // Remove from frontend state immediately (like notifications do)
-        setRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
-        setFilteredRequests(prevFiltered => prevFiltered.filter(req => req.id !== requestId));
+        setRequests((prevRequests) =>
+          prevRequests.filter((req) => req.id !== requestId)
+        );
+        setFilteredRequests((prevFiltered) =>
+          prevFiltered.filter((req) => req.id !== requestId)
+        );
 
         Swal.fire({
           icon: "success",
@@ -251,16 +424,29 @@ const RestockManagement: React.FC = () => {
             <div>
               <h3 class="font-semibold text-gray-700">Shop Information</h3>
               <p><strong>Shop Name:</strong> ${request.shop.name}</p>
-              <p><strong>Requested Amount:</strong> ${request.requestedAmount} units</p>
-              <p><strong>Status:</strong> <span class="px-2 py-1 rounded-full text-xs font-medium ${statusColors[request.status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}">${request.status}</span></p>
+              <p><strong>Requested Amount:</strong> ${
+                request.requestedAmount
+              } units</p>
+              <p><strong>Status:</strong> <span class="px-2 py-1 rounded-full text-xs font-medium ${
+                statusColors[request.status as keyof typeof statusColors] ||
+                "bg-gray-100 text-gray-800"
+              }">${request.status}</span></p>
             </div>
           </div>
           <div>
             <h3 class="font-semibold text-gray-700">Timeline</h3>
-            <p><strong>Created:</strong> ${new Date(request.createdAt).toLocaleString()}</p>
-            <p><strong>Last Updated:</strong> ${new Date(request.updatedAt).toLocaleString()}</p>
+            <p><strong>Created:</strong> ${new Date(
+              request.createdAt
+            ).toLocaleString()}</p>
+            <p><strong>Last Updated:</strong> ${new Date(
+              request.updatedAt
+            ).toLocaleString()}</p>
           </div>
-          ${request.notes ? `<div><h3 class="font-semibold text-gray-700">Notes</h3><p>${request.notes}</p></div>` : ''}
+          ${
+            request.notes
+              ? `<div><h3 class="font-semibold text-gray-700">Notes</h3><p>${request.notes}</p></div>`
+              : ""
+          }
         </div>
       `,
       width: "600px",
@@ -275,23 +461,34 @@ const RestockManagement: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     const colors = {
+      waiting_for_approval: "bg-orange-500",
       pending: "bg-yellow-500",
-      accepted: "bg-blue-500",
+      approved: "bg-blue-500",
       in_transit: "bg-purple-500",
       fulfilled: "bg-green-500",
       rejected: "bg-red-500",
+      cancelled: "bg-gray-500",
     };
     return colors[status as keyof typeof colors] || "bg-gray-500";
+  };
+
+  const getStatusDisplayText = (status: string) => {
+    const displayTexts = {
+      waiting_for_approval: "Waiting for Approval",
+      pending: "Pending",
+      approved: "Approved",
+      in_transit: "In Transit",
+      fulfilled: "Fulfilled",
+      rejected: "Rejected",
+      cancelled: "Cancelled",
+    };
+    return displayTexts[status as keyof typeof displayTexts] || status;
   };
 
   const getUniqueShops = () => {
     const shops = requests.map((request) => request.shop);
     return Array.from(new Map(shops.map((shop) => [shop.id, shop])).values());
   };
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -304,7 +501,6 @@ const RestockManagement: React.FC = () => {
         </Badge>
       </div>
 
-      {/* Search, Filter, and Sort Controls */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Filters & Search</CardTitle>
@@ -329,11 +525,13 @@ const RestockManagement: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="waiting_for_approval">Waiting for Approval</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="accepted">Accepted</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="in_transit">In Transit</SelectItem>
                 <SelectItem value="fulfilled">Fulfilled</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
 
@@ -385,6 +583,8 @@ const RestockManagement: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Search, Filter, and Sort Controls */}
+
       {/* Requests Table */}
       <Card>
         <CardHeader>
@@ -395,6 +595,7 @@ const RestockManagement: React.FC = () => {
             <table className="w-full">
               <thead>
                 <tr className="border-b">
+                  <th className="text-left p-3 font-medium">Type</th>
                   <th className="text-left p-3 font-medium">Product</th>
                   <th className="text-left p-3 font-medium">Shop</th>
                   <th className="text-left p-3 font-medium">Amount</th>
@@ -406,6 +607,9 @@ const RestockManagement: React.FC = () => {
               <tbody>
                 {filteredRequests.map((request) => (
                   <tr key={request.id} className="border-b hover:bg-gray-50">
+                    <td className="p-3">
+                      <Badge variant="outline">{(request.requestType || 'RESTOCK').replace('_', ' ')}</Badge>
+                    </td>
                     <td className="p-3">
                       <div>
                         <div className="font-medium">
@@ -432,7 +636,7 @@ const RestockManagement: React.FC = () => {
                           request.status
                         )} text-white`}
                       >
-                        {request.status}
+                        {getStatusDisplayText(request.status)}
                       </Badge>
                     </td>
                     <td className="p-3">
@@ -460,52 +664,7 @@ const RestockManagement: React.FC = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            Swal.fire({
-                              title: "Update Status",
-                              html: `
-                                <div class="space-y-4">
-                                  <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">New Status</label>
-                                    <select id="status-select" class="w-full p-2 border border-gray-300 rounded-md">
-                                      <option value="pending">Pending</option>
-                                      <option value="accepted">Accepted</option>
-                                      <option value="in_transit">In Transit</option>
-                                      <option value="fulfilled">Fulfilled</option>
-                                      <option value="rejected">Rejected</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
-                                    <textarea id="status-notes" class="w-full p-2 border border-gray-300 rounded-md" rows="3" placeholder="Add any notes about this status change..."></textarea>
-                                  </div>
-                                </div>
-                              `,
-                              showCancelButton: true,
-                              confirmButtonText: "Update Status",
-                              preConfirm: () => {
-                                const status = (
-                                  document.getElementById(
-                                    "status-select"
-                                  ) as HTMLSelectElement
-                                ).value;
-                                const notes = (
-                                  document.getElementById(
-                                    "status-notes"
-                                  ) as HTMLTextAreaElement
-                                ).value;
-                                return { status, notes };
-                              },
-                            }).then((result) => {
-                              if (result.isConfirmed) {
-                                handleStatusUpdate(
-                                  request.id,
-                                  result.value.status,
-                                  result.value.notes
-                                );
-                              }
-                            });
-                          }}
+                          onClick={() => openStatusUpdateDialog(request)}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -524,14 +683,137 @@ const RestockManagement: React.FC = () => {
                 ))}
               </tbody>
             </table>
-            {filteredRequests.length === 0 && (
+            {loading ? (
+              <LoadingSpinner />
+            ) : filteredRequests.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 No restock requests found matching your criteria.
               </div>
-            )}
+            ) : null}
           </div>
         </CardContent>
       </Card>
+
+      {/* Status Update Dialog */}
+      <Dialog open={statusUpdateDialog.open} onOpenChange={closeStatusUpdateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {statusUpdateDialog.request?.status === "waiting_for_approval" 
+                ? "Approve or Reject Request" 
+                : "Update Request Status"}
+            </DialogTitle>
+            <DialogDescription>
+              {statusUpdateDialog.request?.status === "waiting_for_approval" 
+                ? `Review and approve/reject the request for ${statusUpdateDialog.request?.product.name}`
+                : `Update status for ${statusUpdateDialog.request?.product.name}`}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="status-select">New Status</Label>
+              <Select
+                value={statusUpdateDialog.newStatus}
+                onValueChange={(value) =>
+                  setStatusUpdateDialog(prev => ({ ...prev, newStatus: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusUpdateDialog.request?.status === "waiting_for_approval" ? (
+                    // For waiting for approval requests, show approve/reject/cancel options
+                    <>
+                      <SelectItem value="approved">Approve</SelectItem>
+                      <SelectItem value="rejected">Reject</SelectItem>
+                      <SelectItem value="cancelled">Cancel</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "pending" ? (
+                    // For pending requests, show approve/reject/cancel options
+                    <>
+                      <SelectItem value="approved">Approve</SelectItem>
+                      <SelectItem value="rejected">Reject</SelectItem>
+                      <SelectItem value="cancelled">Cancel</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "approved" ? (
+                    // For approved requests, show in_transit/fulfilled/cancel options
+                    <>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="in_transit">Mark as In Transit</SelectItem>
+                      <SelectItem value="fulfilled">Mark as Fulfilled</SelectItem>
+                      <SelectItem value="cancelled">Cancel</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "in_transit" ? (
+                    // For in_transit requests, show fulfilled/cancel options
+                    <>
+                      <SelectItem value="in_transit">In Transit</SelectItem>
+                      <SelectItem value="fulfilled">Mark as Fulfilled</SelectItem>
+                      <SelectItem value="cancelled">Cancel</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "fulfilled" ? (
+                    // For fulfilled requests, show current status only
+                    <>
+                      <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "rejected" ? (
+                    // For rejected requests, show current status only
+                    <>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </>
+                  ) : statusUpdateDialog.request?.status === "cancelled" ? (
+                    // For cancelled requests, show current status only
+                    <>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </>
+                  ) : (
+                    // For other statuses, show current status only
+                    <>
+                      <SelectItem value={statusUpdateDialog.request?.status || "waiting_for_approval"}>
+                        {getStatusDisplayText(statusUpdateDialog.request?.status || "waiting_for_approval")}
+                      </SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <Label htmlFor="status-notes">Notes (Optional)</Label>
+              <Textarea
+                id="status-notes"
+                placeholder="Add any notes about this status change..."
+                value={statusUpdateDialog.notes}
+                onChange={(e) =>
+                  setStatusUpdateDialog(prev => ({ ...prev, notes: e.target.value }))
+                }
+                rows={3}
+              />
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={closeStatusUpdateDialog}>
+                Cancel
+              </Button>
+              <Button onClick={handleStatusUpdate}>
+                {statusUpdateDialog.request?.status === "waiting_for_approval" || statusUpdateDialog.request?.status === "pending"
+                  ? (statusUpdateDialog.newStatus === "approved" ? "Approve" : 
+                     statusUpdateDialog.newStatus === "rejected" ? "Reject" : 
+                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                  : statusUpdateDialog.request?.status === "approved"
+                  ? (statusUpdateDialog.newStatus === "in_transit" ? "Mark as In Transit" : 
+                     statusUpdateDialog.newStatus === "fulfilled" ? "Mark as Fulfilled" : 
+                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                  : statusUpdateDialog.request?.status === "in_transit"
+                  ? (statusUpdateDialog.newStatus === "fulfilled" ? "Mark as Fulfilled" : 
+                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                  : "Update Status"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

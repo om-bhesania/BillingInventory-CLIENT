@@ -15,10 +15,13 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     logger.api.request(config.method?.toUpperCase() || 'GET', config.url || '', config.data);
+    // emit start
+    try { window.dispatchEvent(new CustomEvent('api:request-start')); } catch {}
     return config;
   },
   (error) => {
     logger.api.error('REQUEST', error.config?.url || '', error);
+    try { window.dispatchEvent(new CustomEvent('api:request-end')); } catch {}
     return Promise.reject(error);
   }
 );
@@ -32,11 +35,13 @@ api.interceptors.response.use(
     //   response.status,
     //   response.data
     // );
+    try { window.dispatchEvent(new CustomEvent('api:request-end')); } catch {}
     return response;
   },
   async (error) => {
     const originalRequest = error.config;
     const message = error.response?.data?.message || "An error occurred";
+    const errorCode = error.response?.data?.error || error.response?.data?.code;
     
     logger.api.error(
       originalRequest?.method?.toUpperCase() || 'GET',
@@ -44,6 +49,19 @@ api.interceptors.response.use(
       error
     );
     
+    // If explicit invalid token from backend, force logout immediately
+    if (
+      error.response?.status === 401 &&
+      (String(errorCode).toUpperCase() === 'INVALID_TOKEN' || /invalid\s*token/i.test(String(message)))
+    ) {
+      try {
+        sessionStorage.removeItem("auth_token");
+        sessionStorage.removeItem("user_data");
+        window.dispatchEvent(new CustomEvent('auth:invalid-token'));
+      } catch {}
+      return Promise.reject(error);
+    }
+
     // If 401 and not already trying to refresh
     if (
       error.response?.status === 401 &&
@@ -91,6 +109,7 @@ api.interceptors.response.use(
       });
     }
     
+    try { window.dispatchEvent(new CustomEvent('api:request-end')); } catch {}
     return Promise.reject(error);
   }
 );

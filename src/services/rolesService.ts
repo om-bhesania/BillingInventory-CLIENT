@@ -68,10 +68,10 @@ export const hasPermission = (
 
 // Check if user is admin
 export const isAdmin = (userRole: string): boolean => {
-  return userRole === "Admin";
+  return userRole === "Admin" || userRole === "admin";
 };
 
 // Check if user is shop owner
 export const isShopOwner = (userRole: string): boolean => {
-  return userRole === "Shop_Owner";
+  return userRole === "Shop_Owner" || userRole === "Shop Owner";
 };

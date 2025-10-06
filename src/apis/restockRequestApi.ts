@@ -6,14 +6,30 @@ export interface RestockRequest {
   shopId: string;
   productId: string;
   requestedAmount: number;
-  status: "pending" | "approved" | "rejected";
+  status: "waiting_for_approval" | "approved_pending" | "fulfilled" | "rejected" | "pending" | "approved";
+  requestType?: "RESTOCK" | "INVENTORY_ADD";
   notes?: string;
+  paymentMethod?: "upfront" | "credit";
+  paymentStatus?: "pending" | "paid" | "verified" | "rejected" | "pending_verification";
+  receiptPath?: string;
+  totalAmount?: number;
+  discountCode?: string;
+  discountAmount?: number;
+  finalAmount?: number;
+  approvedAt?: string;
+  fulfilledAt?: string;
   createdAt: string;
   updatedAt: string;
+  shop?: {
+    id: string;
+    name: string;
+    managerId?: string;
+  };
   product: {
     id: string;
     name: string;
     sku: string;
+    unitPrice: number;
     category: {
       id: string;
       name: string;
@@ -30,6 +46,12 @@ export interface CreateRestockRequestRequest {
   productId: string;
   requestedAmount: number;
   notes?: string;
+  requestType?: "RESTOCK" | "INVENTORY_ADD";
+  paymentMethod?: "upfront" | "credit";
+  discountCode?: string;
+  totalAmount?: number;
+  discountAmount?: number;
+  finalAmount?: number;
 }
 
 export interface RejectRestockRequestRequest {
@@ -37,7 +59,9 @@ export interface RejectRestockRequestRequest {
 }
 
 // Create restock request
-export const createRestockRequest = async (data: CreateRestockRequestRequest): Promise<RestockRequest> => {
+export const createRestockRequest = async (
+  data: CreateRestockRequestRequest
+): Promise<RestockRequest> => {
   const response = await service<RestockRequest>({
     url: API_URL.restockRequest.create,
     method: "POST",
@@ -46,8 +70,18 @@ export const createRestockRequest = async (data: CreateRestockRequestRequest): P
   return response;
 };
 
+export const getAllRestockRequests = async (): Promise<RestockRequest[]> => {
+  const response = await service<RestockRequest[]>({
+    url: API_URL.restockRequest.getAll,
+    method: "GET",
+  });
+  return response;
+};
+
 // Get restock requests by shop ID
-export const getRestockRequests = async (shopId: string): Promise<RestockRequest[]> => {
+export const getRestockRequests = async (
+  shopId: string
+): Promise<RestockRequest[]> => {
   const response = await service<RestockRequest[]>({
     url: API_URL.restockRequest.getByShopId(shopId),
     method: "GET",
@@ -56,7 +90,9 @@ export const getRestockRequests = async (shopId: string): Promise<RestockRequest
 };
 
 // Approve restock request
-export const approveRestockRequest = async (id: string): Promise<RestockRequest> => {
+export const approveRestockRequest = async (
+  id: string
+): Promise<RestockRequest> => {
   const response = await service<RestockRequest>({
     url: API_URL.restockRequest.approve(id),
     method: "PATCH",
@@ -65,7 +101,10 @@ export const approveRestockRequest = async (id: string): Promise<RestockRequest>
 };
 
 // Reject restock request
-export const rejectRestockRequest = async (id: string, data: RejectRestockRequestRequest): Promise<RestockRequest> => {
+export const rejectRestockRequest = async (
+  id: string,
+  data: RejectRestockRequestRequest
+): Promise<RestockRequest> => {
   const response = await service<RestockRequest>({
     url: API_URL.restockRequest.reject(id),
     method: "PATCH",

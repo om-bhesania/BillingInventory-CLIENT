@@ -6,6 +6,8 @@ export interface ShopInventoryItem {
   shopId: string;
   productId: string;
   currentStock: number;
+  minStockPerItem?: number;
+  lowStockAlertsEnabled?: boolean;
   lastRestockDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -75,6 +77,16 @@ export const bulkCreateShopInventory = async (data: BulkCreateShopInventoryReque
 export const getShopInventory = async (shopId: string): Promise<ShopInventoryItem[]> => {
   const response = await service({
     url: API_URL.shopInventory.getByShopId(shopId),
+    method: "GET",
+  });
+  // @ts-ignore
+  return response;
+};
+
+// Get single shop inventory item by ID
+export const getShopInventoryItem = async (id: string): Promise<ShopInventoryItem> => {
+  const response = await service({
+    url: API_URL.shopInventory.getById(id),
     method: "GET",
   });
   // @ts-ignore

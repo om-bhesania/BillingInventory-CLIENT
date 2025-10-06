@@ -1,4 +1,4 @@
-import { getEmployee } from "@/apis/employeeapi";
+import { getEmployee, deleteEmployee } from "@/apis/employeeapi";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,8 +15,9 @@ import { Filter, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { employeeColumns } from "./Columns";
-
-// Mock employees data
+import useToast from "@/hooks/use-toast";
+import { useCustomAlert } from "@/components/ui/custom-alert";
+// Mock employees data (fallback)
 const mockEmployees = Array.from({ length: 10 }).map((_, i) => ({
   id: `EMP${1000 + i}`,
   name: `Employee ${i + 1}`,
@@ -31,14 +32,27 @@ const mockEmployees = Array.from({ length: 10 }).map((_, i) => ({
 const EmployeeList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [employeeData, setEmployeeData] = useState<any>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { showSuccess, showError } = useCustomAlert();
 
   const fetchEmployeeData = async () => {
+    console.log("Fetching employee data...");
+    setIsLoading(true);
+    setError(null);
+
     try {
       const response: any = await getEmployee();
-      console.log("product Data", response);
+      console.log("Employee Data fetched:", response);
+      console.log("Setting employeeData to:", response);
       setEmployeeData(response);
-    } catch {
-      return false;
+    } catch (err) {
+      console.error("Error fetching employee data:", err);
+      setError("Failed to load employee data. Using mock data instead.");
+      setEmployeeData(mockEmployees);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -50,14 +64,28 @@ const EmployeeList = () => {
 
   const filteredEmployees = employeeData.filter(
     (employee) =>
-      employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.shop.toLowerCase().includes(searchTerm.toLowerCase())
+      employee.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.position?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      employee.shop?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-  const handleDelete = (id: string) => {
-    setEmployeeData(employeeData.filter((employee) => employee.id !== id));
+
+  const handleDelete = async (id: string) => {
+    console.log("Deleting employee with ID:", id);
+    console.log("Current employeeData before deletion:", employeeData);
+    try {
+      const res: any = await deleteEmployee(id);
+      console.log("Delete API response:", res);
+      showSuccess(
+        "Employee Deleted",
+        `Employee ${res.message || "has been deleted successfully"}.`
+      );
+      fetchEmployeeData();
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      showError("Error", "Failed to delete employee");
+    }
   };
 
   return (
@@ -71,14 +99,38 @@ const EmployeeList = () => {
             Manage your employees across all shops
           </p>
         </div>
-        <Button asChild>
-          <Link to="/employees/add">
+        <Link to="/employees/add">
+          <Button>
             <Plus className="mr-2 h-4 w-4" /> Add New Employee
-          </Link>
-        </Button>
+          </Button>
+        </Link>
       </div>
 
       <Separator className="my-6" />
+
+      {/* Loading and Error States */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-muted-foreground">Loading employees...</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="p-4 mb-6 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-yellow-800">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={fetchEmployeeData}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="relative flex-1 md:max-w-sm">
@@ -127,103 +179,12 @@ const EmployeeList = () => {
       </div>
 
       <div className="mt-6 rounded-md border">
-        {/* <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Position</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Shop</TableHead>
-              <TableHead>Join Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredEmployees.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="h-40 text-center">
-                  No employees found
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredEmployees.map((employee) => (
-                <TableRow key={employee.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={`https://i.pravatar.cc/150?u=${employee.id}`} alt={employee.name} />
-                        <AvatarFallback>{employee.name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{employee.name}</div>
-                        <div className="text-xs text-muted-foreground">{employee.id}</div>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{employee.position}</TableCell>
-                  <TableCell>
-                    <div className="text-sm">{employee.email}</div>
-                    <div className="text-xs text-muted-foreground">{employee.phone}</div>
-                  </TableCell>
-                  <TableCell>{employee.shop}</TableCell>
-                  <TableCell>{employee.joinDate}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={employee.status === "Active" ? "secondary" : "outline"}
-                    >
-                      {employee.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end space-x-2">
-                      <Button variant="ghost" size="icon" asChild>
-                        <Link to={`/employees/edit/${employee.id}`}>
-                          <span className="sr-only">Edit</span>
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-4 w-4"
-                          >
-                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                            <path d="m15 5 4 4" />
-                          </svg>
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(employee.id)}
-                      >
-                        <span className="sr-only">Delete</span>
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="h-4 w-4"
-                        >
-                          <path d="M3 6h18" />
-                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                        </svg>
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table> */}
-        <Table columns={employeeColumns} data={filteredEmployees} />
+        {!isLoading && (
+          <Table
+            columns={employeeColumns(handleDelete, fetchEmployeeData)}
+            data={filteredEmployees}
+          />
+        )}
       </div>
     </>
   );

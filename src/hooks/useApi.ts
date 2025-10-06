@@ -56,6 +56,7 @@ export function useApi<T = any>(
 
   const execute = useCallback(
     async (params?: any): Promise<T | null> => {
+      if (state.loading) return null; // prevent re-entry while in flight
       try {
         setState(prev => ({ ...prev, loading: true, error: null }));
 
@@ -100,7 +101,7 @@ export function useApi<T = any>(
         return null;
       }
     },
-    [endpoint, method]
+    [endpoint, method, state.loading]
   );
 
   const reset = useCallback(() => {

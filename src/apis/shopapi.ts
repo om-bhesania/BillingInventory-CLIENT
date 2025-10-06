@@ -1,6 +1,14 @@
 import { API_URL } from "@/services/apiuri";
 import { service } from "@/services/service";
 
+export const getEmployees = async () => {
+  const response = await service({
+    url: API_URL.employee.getAll,
+    method: "GET",
+  });
+  return response;
+};
+
 export const addShop = async (shop: any) => {
   const response = await service({
     url: API_URL.shop.add,
@@ -38,6 +46,31 @@ export const updateShop = async (id: string, data: any) => {
 export const deleteShop = async (id: string) => {
   const response = await service({
     url: API_URL.shop.byId(id),
+    method: "DELETE",
+  });
+  return response;
+};
+
+export const linkShopManager = async (shopId: string, userPublicId: string) => {
+  const response = await service({
+    url: API_URL.shop.linkManager(shopId),
+    method: "POST",
+    data: { userPublicId },
+  });
+  return response;
+};
+
+export const unlinkShopManager = async (shopId: string) => {
+  const response = await service({
+    url: API_URL.shop.unlinkManager(shopId),
+    method: "DELETE",
+  });
+  return response;
+};
+
+export const deleteAllShopData = async (shopId: string) => {
+  const response = await service({
+    url: API_URL.shop.deleteAllData(shopId),
     method: "DELETE",
   });
   return response;

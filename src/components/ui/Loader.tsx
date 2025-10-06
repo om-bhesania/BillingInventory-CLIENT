@@ -1,51 +1,61 @@
-import { useState, useEffect } from "react";
+import React from "react";
+import { cn } from "@/lib/utils";
 
-const colors = [
-  "from-blue-500",
-  "from-green-500",
-  "from-orange-500",
-  "from-red-500",
-];
-
-const LoadingSpinner = () => {
-  const [gradient, setGradient] = useState(colors[0]);
-  const [emojiColor, setEmojiColor] = useState("text-blue-500/60");
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const nextGradient =
-        colors[(colors.indexOf(gradient) + 1) % colors.length];
-      setGradient(nextGradient);
-      setEmojiColor(`text-${nextGradient.split("-")[1]}/60`);
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [gradient]);
-
-  return (
-    <div className="fixed inset-0 flex items-center justify-center z-50">
-      <div className="flex flex-col items-center space-y-4 ">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse">
-          <span className={`text-4xl animate-bounce `}>🍦</span>
-        </div>
-        <p className="text-black text-2xl font-medium !m-0 animate-pulse">
-          Please wait Blizz is Loading{" "}
-          <span className="animate-pulse duration-500 transition ease-linear text-3xl">
-            .
-          </span>{" "}
-          <span className="animate-pulse duration-500 transition ease-linear text-3xl">
-            .
-          </span>{" "}
-          <span className="animate-pulse duration-500 transition ease-linear text-3xl">
-            .
-          </span>{" "}
-          <span className="animate-pulse duration-500 transition ease-linear text-3xl">
-            .
-          </span>
-        </p>
-      </div>
+interface LoadingSpinnerProps {
+  className?: string; // extra classes applied to outer container
+  containerClassName?: string; // override/extend outer container
+  wrapperClassName?: string; // wrapper around rings
+  trackClassName?: string; // background ring
+  spinnerClassName?: string; // animated foreground ring
+  messageClassName?: string; // message text styles
+  isMessage?: boolean; // optional message; omit to hide
+  message?: string;
+}
+// Loading Spinner Component
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
+  className,
+  containerClassName,
+  wrapperClassName,
+  trackClassName,
+  spinnerClassName,
+  messageClassName,
+  isMessage = true,
+  message = "Loading...",
+}) => (
+  <div
+    className={cn(
+      `loader-container flex ${
+        isMessage && "flex-col"
+      } items-center justify-center space-y-4`,
+      containerClassName,
+      className
+    )}
+  >
+    <div className={cn("relative loader-wrapper", wrapperClassName)}>
+      <div
+        className={cn(
+          "loader-outer-ring w-12 h-12 rounded-full border-4 border-gray-200 dark:border-gray-700",
+          trackClassName
+        )}
+      ></div>
+      <div
+        className={cn(
+          "loader-inner-ring absolute inset-0 w-12 h-12 rounded-full border-4 border-transparent border-t-blue-500 animate-spin",
+          spinnerClassName
+        )}
+      ></div>
     </div>
-  );
-};
+    {isMessage !== undefined && (
+      <p
+        className={cn(
+          "loader-message text-gray-600 dark:text-gray-300 text-sm font-medium text-center p-0 m-0",
+          messageClassName
+        )}
+      >
+        {isMessage=== true && message}
+      </p>
+    )}
+  </div>
+);
 
 export default LoadingSpinner;
