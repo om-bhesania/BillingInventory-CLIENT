@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { formatDateToDDMMYYYYHHMMAMPM } from "@/lib/utils";
 import { PencilIcon, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -20,6 +21,11 @@ export const InventoryColumns = (handleDelete: (id: string) => void) => [
     header: "Flavor",
   },
   {
+    accessorKey: "packagingType.name",
+    header: "Packaging",
+  },
+
+  {
     accessorKey: "totalStock",
     header: "Total Stock",
   },
@@ -29,7 +35,24 @@ export const InventoryColumns = (handleDelete: (id: string) => void) => [
   },
   {
     accessorKey: "unitPrice",
-    header: "Unit Price (₹)",
+    header: "MRP/Unit Price (₹) *",
+  },
+  {
+    accessorKey: "retailPrice",
+    header: "Retail Price (₹)",
+  },
+  {
+    accessorKey: "costPrice",
+    header: "Cost Price (₹)",
+  },
+  {
+    accessorKey: "quantityInLiters",
+    header: "Total Quantity (Liters)",
+  },
+  {
+    accessorKey: "createdAt",
+    header: "Created At",
+    Cell: ({ row }) => formatDateToDDMMYYYYHHMMAMPM(row.original.createdAt),
   },
   {
     header: "Actions",
@@ -40,7 +63,7 @@ export const InventoryColumns = (handleDelete: (id: string) => void) => [
             <PencilIcon />
           </Link>
         </Button>
-        <Button 
+        <Button
           variant="ghost"
           size="icon"
           onClick={() => handleDelete(row.original.id)}

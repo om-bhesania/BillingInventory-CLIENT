@@ -1,48 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+ 
+import { BarChart, DoughnutChart, SalesTrendChart, TrendChart } from '@/components/charts'; 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  ShoppingCart, 
-  Package, 
-  Users,
+import { SimpleDateRangePicker } from '@/components/ui/SimpleDateRangePicker';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/contexts/AuthContext';
+import { useDashboard } from '@/hooks/use-getDashboardData'; 
+import { cn } from '@/lib/utils'; 
+import {
+  AlertTriangle,
   BarChart3,
-  PieChart,
+  CheckCircle,
+  DollarSign,
   LineChart,
+  Package,
+  RefreshCw,
+  ShoppingCart,
   Star,
   Target,
-  AlertTriangle,
-  CheckCircle,
-  RefreshCw,
-  Calendar,
-  Zap,
-  Activity,
-  Lightbulb
+  TrendingDown,
+  TrendingUp,
+  Users
 } from 'lucide-react';
-import { useDashboard } from '@/hooks/use-getDashboardData';
-import { useAuth } from '@/contexts/AuthContext';
-import { cn } from '@/lib/utils';
-import { SimpleDateRangePicker } from '@/components/ui/SimpleDateRangePicker';
-import { TrendChart, BarChart, DoughnutChart, SalesTrendChart } from '@/components/charts';
-import { EnhancedAnalyticsDashboard } from '@/components/charts/EnhancedAnalyticsDashboard';
-import { AnalyticsDashboard } from '@/components/charts/AnalyticsDashboard';
-import { transformSalesTrendData, transformCategoryData, transformFlavorData } from '@/lib/analytics';
-import { getTopSellingProducts, getLowStockStats, getTotalRevenue, getTotalItemsWorth } from '@/apis/dashboardApi';
-import { subDays } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import { EnhancedAnalyticsDashboard } from "@/components/charts/EnhancedAnalyticsDashboard";
+import { AnalyticsDashboard } from "@/components/charts/AnalyticsDashboard";
+import {
+  transformSalesTrendData,
+  transformCategoryData,
+  transformFlavorData,
+} from "@/lib/analytics";
+import { getTotalRevenue, getTotalItemsWorth } from "@/apis/dashboardApi";
+import { subDays } from "date-fns";
 
 interface MetricCardProps {
   title: string;
   value: number;
   previousValue: number;
   growth: number;
-  trend: 'up' | 'down' | 'stable';
+  trend: "up" | "down" | "stable";
   icon: React.ComponentType<any>;
-  format?: 'currency' | 'number' | 'percentage';
+  format?: "currency" | "number" | "percentage";
   description?: string;
   className?: string;
 }
@@ -54,20 +54,20 @@ const MetricCard: React.FC<MetricCardProps> = ({
   growth,
   trend,
   icon: Icon,
-  format = 'number',
+  format = "number",
   description,
-  className
+  className,
 }) => {
   const formatValue = (val: number) => {
     switch (format) {
-      case 'currency':
-        return new Intl.NumberFormat('en-IN', {
-          style: 'currency',
-          currency: 'INR',
+      case "currency":
+        return new Intl.NumberFormat("en-IN", {
+          style: "currency",
+          currency: "INR",
           minimumFractionDigits: 0,
-          maximumFractionDigits: 0
+          maximumFractionDigits: 0,
         }).format(val);
-      case 'percentage':
+      case "percentage":
         return `${val.toFixed(1)}%`;
       default:
         return val.toLocaleString();
@@ -76,9 +76,9 @@ const MetricCard: React.FC<MetricCardProps> = ({
 
   const getTrendIcon = () => {
     switch (trend) {
-      case 'up':
+      case "up":
         return <TrendingUp className="h-4 w-4 text-green-500" />;
-      case 'down':
+      case "down":
         return <TrendingDown className="h-4 w-4 text-red-500" />;
       default:
         return <div className="h-4 w-4 rounded-full bg-gray-400" />;
@@ -87,17 +87,22 @@ const MetricCard: React.FC<MetricCardProps> = ({
 
   const getTrendColor = () => {
     switch (trend) {
-      case 'up':
-        return 'text-green-600';
-      case 'down':
-        return 'text-red-600';
+      case "up":
+        return "text-green-600";
+      case "down":
+        return "text-red-600";
       default:
-        return 'text-gray-600';
+        return "text-gray-600";
     }
   };
 
   return (
-    <Card className={cn("relative overflow-hidden hover:shadow-lg transition-all duration-200", className)}>
+    <Card
+      className={cn(
+        "relative overflow-hidden hover:shadow-lg transition-all duration-200",
+        className
+      )}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -109,11 +114,12 @@ const MetricCard: React.FC<MetricCardProps> = ({
       <CardContent>
         <div className="space-y-3">
           <div className="text-3xl font-bold">{formatValue(value)}</div>
-          
+
           <div className="flex items-center space-x-2">
             {getTrendIcon()}
             <span className={cn("text-sm font-medium", getTrendColor())}>
-              {growth > 0 ? '+' : ''}{growth.toFixed(1)}%
+              {growth > 0 ? "+" : ""}
+              {growth.toFixed(1)}%
             </span>
             <span className="text-xs text-muted-foreground">
               vs {formatValue(previousValue)}
@@ -129,10 +135,7 @@ const MetricCard: React.FC<MetricCardProps> = ({
               <span>Growth Progress</span>
               <span>{Math.min(Math.abs(growth), 100).toFixed(0)}%</span>
             </div>
-            <Progress 
-              value={Math.min(Math.abs(growth), 100)} 
-              className="h-2"
-            />
+            <Progress value={Math.min(Math.abs(growth), 100)} className="h-2" />
           </div>
         </div>
       </CardContent>
@@ -144,37 +147,39 @@ interface ComprehensiveDashboardProps {
   className?: string;
 }
 
-export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ className }) => {
+export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({
+  className,
+}) => {
   const { user } = useAuth();
-  const { 
-    dashboardData, 
-    isLoading, 
-    error, 
-    isRefreshing, 
+  const {
+    dashboardData,
+    isLoading,
+    error,
+    isRefreshing,
     handleManualRefresh,
     formatLastRefresh,
     lastRefresh,
     handleDateRangeChange,
-    dateRange
-  } = useDashboard();
+    dateRange,
+  }:any = useDashboard();
 
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState("overview");
   const [realRevenue, setRealRevenue] = useState<any>(null);
   const [totalItemsWorth, setTotalItemsWorth] = useState<any>(null);
 
   // Fetch new revenue data
   useEffect(() => {
     const fetchRevenueData = async () => {
-      if (user?.role === 'Admin') {
+      if (user?.role === "Admin") {
         try {
           const [revenueData, itemsWorthData] = await Promise.all([
             getTotalRevenue(),
-            getTotalItemsWorth()
+            getTotalItemsWorth(),
           ]);
           setRealRevenue(revenueData);
           setTotalItemsWorth(itemsWorthData);
         } catch (error) {
-          console.error('Error fetching revenue data:', error);
+          console.error("Error fetching revenue data:", error);
         }
       }
     };
@@ -184,30 +189,30 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
   // WebSocket listener for real-time revenue updates
   useEffect(() => {
-    if (user?.role === 'Admin') {
+    if (user?.role === "Admin") {
       const handleRevenueUpdate = () => {
         // Refresh revenue data when a new billing is created
         const fetchRevenueData = async () => {
           try {
             const [revenueData, itemsWorthData] = await Promise.all([
               getTotalRevenue(),
-              getTotalItemsWorth()
+              getTotalItemsWorth(),
             ]);
             setRealRevenue(revenueData);
             setTotalItemsWorth(itemsWorthData);
           } catch (error) {
-            console.error('Error fetching updated revenue data:', error);
+            console.error("Error fetching updated revenue data:", error);
           }
         };
         fetchRevenueData();
       };
 
       // Listen for revenue updates
-      window.addEventListener('revenue_updated', handleRevenueUpdate);
-      
+      window.addEventListener("revenue_updated", handleRevenueUpdate);
+
       // Cleanup
       return () => {
-        window.removeEventListener('revenue_updated', handleRevenueUpdate);
+        window.removeEventListener("revenue_updated", handleRevenueUpdate);
       };
     }
   }, [user?.role]);
@@ -216,40 +221,63 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
   const getMetrics = () => {
     if (!dashboardData?.metrics) {
       return {
-        revenue: { current: 0, previous: 0, growth: 0, trend: 'stable' as const },
-        orders: { current: 0, previous: 0, growth: 0, trend: 'stable' as const },
-        products: { current: 0, previous: 0, growth: 0, trend: 'stable' as const },
-        customers: { current: 0, previous: 0, growth: 0, trend: 'stable' as const }
+        revenue: {
+          current: 0,
+          previous: 0,
+          growth: 0,
+          trend: "stable" as const,
+        },
+        orders: {
+          current: 0,
+          previous: 0,
+          growth: 0,
+          trend: "stable" as const,
+        },
+        products: {
+          current: 0,
+          previous: 0,
+          growth: 0,
+          trend: "stable" as const,
+        },
+        customers: {
+          current: 0,
+          previous: 0,
+          growth: 0,
+          trend: "stable" as const,
+        },
       };
     }
 
     const metrics = dashboardData.metrics;
-    
+
     return {
       revenue: {
         current: metrics.totalRevenue?.total || 0,
         previous: metrics.totalRevenue?.previousPeriod || 0,
         growth: metrics.totalRevenue?.growth || 0,
-        trend: (metrics.totalRevenue?.growth || 0) > 0 ? 'up' : 'down' as 'up' | 'down'
+        trend:
+          (metrics.totalRevenue?.growth || 0) > 0
+            ? "up"
+            : ("down" as "up" | "down"),
       },
       orders: {
         current: metrics.totalRevenue?.count || 0,
         previous: 0,
         growth: 0,
-        trend: 'stable' as 'up' | 'down' | 'stable'
+        trend: "stable" as "up" | "down" | "stable",
       },
       products: {
         current: metrics.totalProducts?.total || 0,
         previous: metrics.totalProducts?.previousPeriod || 0,
         growth: 0,
-        trend: 'stable' as 'up' | 'down' | 'stable'
+        trend: "stable" as "up" | "down" | "stable",
       },
       customers: {
         current: 150,
         previous: 120,
         growth: 25,
-        trend: 'up' as 'up' | 'down' | 'stable'
-      }
+        trend: "up" as "up" | "down" | "stable",
+      },
     };
   };
 
@@ -264,7 +292,7 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
             <p className="text-muted-foreground">Loading your dashboard...</p>
           </div>
         </div>
-        
+
         {/* Loading skeleton */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -292,12 +320,14 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
             <p className="text-muted-foreground">Error loading dashboard</p>
           </div>
         </div>
-        
+
         <Card>
           <CardContent className="pt-6">
             <div className="text-center py-8">
               <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-              <h3 className="text-lg font-semibold mb-2">Failed to Load Dashboard</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                Failed to Load Dashboard
+              </h3>
               <p className="text-muted-foreground mb-4">{error}</p>
               <Button onClick={handleManualRefresh} disabled={isRefreshing}>
                 {isRefreshing ? "Retrying..." : "Try Again"}
@@ -318,7 +348,8 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
             Comprehensive Dashboard
           </h1>
           <p className="text-muted-foreground">
-            Welcome back, {user?.name || 'User'}! Here's your complete business overview.
+            Welcome back, {user?.name || "User"}! Here's your complete business
+            overview.
           </p>
           <div className="flex items-center gap-4 mt-2">
             {lastRefresh && (
@@ -329,14 +360,16 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            onClick={handleManualRefresh} 
+          <Button
+            onClick={handleManualRefresh}
             disabled={isRefreshing}
             variant="outline"
             className="gap-2"
           >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            <RefreshCw
+              className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            {isRefreshing ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>
@@ -349,7 +382,11 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
       />
 
       {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="space-y-6"
+      >
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
@@ -383,7 +420,7 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
               format="currency"
               description="Total revenue generated"
             />
-            
+
             <MetricCard
               title="Total Orders"
               value={metrics.orders.current}
@@ -394,7 +431,7 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
               format="number"
               description="Total orders placed"
             />
-            
+
             <MetricCard
               title="Products"
               value={metrics.products.current}
@@ -405,7 +442,7 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
               format="number"
               description="Products in inventory"
             />
-            
+
             <MetricCard
               title="Customers"
               value={metrics.customers.current}
@@ -419,21 +456,25 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           </div>
 
           {/* New Revenue Cards - Admin Only */}
-          {user?.role === 'Admin' && (
+          {user?.role === "Admin" && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Revenue
+                  </CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {realRevenue ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(realRevenue.totalRevenue) : '₹0'}
+                    {realRevenue
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(realRevenue.totalRevenue)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {realRevenue?.totalBills || 0} bills generated
@@ -448,17 +489,21 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Items Worth</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Items Worth
+                  </CardTitle>
                   <Package className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {totalItemsWorth ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(totalItemsWorth.totalItemsWorth) : '₹0'}
+                    {totalItemsWorth
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(totalItemsWorth.totalItemsWorth)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {totalItemsWorth?.totalRequests || 0} fulfilled requests
@@ -471,24 +516,33 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Profit
+                  </CardTitle>
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
-                    {realRevenue ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(realRevenue.totalProfit) : '₹0'}
+                    {realRevenue
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(realRevenue.totalProfit)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     From all shop sales
                   </p>
                   {realRevenue?.totalRevenue && realRevenue?.totalProfit && (
                     <p className="text-xs text-muted-foreground">
-                      Margin: {((realRevenue.totalProfit / realRevenue.totalRevenue) * 100).toFixed(1)}%
+                      Margin:{" "}
+                      {(
+                        (realRevenue.totalProfit / realRevenue.totalRevenue) *
+                        100
+                      ).toFixed(1)}
+                      %
                     </p>
                   )}
                 </CardContent>
@@ -496,15 +550,20 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Revenue vs Items</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Revenue vs Items
+                  </CardTitle>
                   <BarChart3 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {realRevenue && totalItemsWorth ? 
-                      `${((realRevenue.totalRevenue / totalItemsWorth.totalItemsWorth) * 100).toFixed(0)}%` : 
-                      '0%'
-                    }
+                    {realRevenue && totalItemsWorth
+                      ? `${(
+                          (realRevenue.totalRevenue /
+                            totalItemsWorth.totalItemsWorth) *
+                          100
+                        ).toFixed(0)}%`
+                      : "0%"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Revenue conversion rate
@@ -538,20 +597,56 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Revenue Growth</span>
-                    <Badge variant={(dashboardData?.metrics?.totalRevenue?.growth || 0) > 0 ? "default" : "destructive"}>
-                      {(dashboardData?.metrics?.totalRevenue?.growth || 0) > 0 ? '+' : ''}{(dashboardData?.metrics?.totalRevenue?.growth || 0).toFixed(1)}%
+                    <Badge
+                      variant={
+                        (dashboardData?.metrics?.totalRevenue?.growth || 0) > 0
+                          ? "default"
+                          : "destructive"
+                      }
+                    >
+                      {(dashboardData?.metrics?.totalRevenue?.growth || 0) > 0
+                        ? "+"
+                        : ""}
+                      {(
+                        dashboardData?.metrics?.totalRevenue?.growth || 0
+                      ).toFixed(1)}
+                      %
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Order Growth</span>
-                    <Badge variant={(dashboardData?.metrics?.totalOrders?.growth || 0) > 0 ? "default" : "destructive"}>
-                      {(dashboardData?.metrics?.totalOrders?.growth || 0) > 0 ? '+' : ''}{(dashboardData?.metrics?.totalOrders?.growth || 0).toFixed(1)}%
+                    <Badge
+                      variant={
+                        (dashboardData?.metrics?.totalOrders?.growth || 0) > 0
+                          ? "default"
+                          : "destructive"
+                      }
+                    >
+                      {(dashboardData?.metrics?.totalOrders?.growth || 0) > 0
+                        ? "+"
+                        : ""}
+                      {(
+                        dashboardData?.metrics?.totalOrders?.growth || 0
+                      ).toFixed(1)}
+                      %
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Shop Growth</span>
-                    <Badge variant={(dashboardData?.metrics?.totalShops?.growth || 0) > 0 ? "default" : "destructive"}>
-                      {(dashboardData?.metrics?.totalShops?.growth || 0) > 0 ? '+' : ''}{(dashboardData?.metrics?.totalShops?.growth || 0).toFixed(1)}%
+                    <Badge
+                      variant={
+                        (dashboardData?.metrics?.totalShops?.growth || 0) > 0
+                          ? "default"
+                          : "destructive"
+                      }
+                    >
+                      {(dashboardData?.metrics?.totalShops?.growth || 0) > 0
+                        ? "+"
+                        : ""}
+                      {(
+                        dashboardData?.metrics?.totalShops?.growth || 0
+                      ).toFixed(1)}
+                      %
                     </Badge>
                   </div>
                 </div>
@@ -572,22 +667,26 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-500" />
                       <span className="text-xs text-muted-foreground">
-                        {isLoading ? 'Loading...' : 'Connected'}
+                        {isLoading ? "Loading..." : "Connected"}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">Last Update</span>
                     <span className="text-xs text-muted-foreground">
-                      {lastRefresh ? formatLastRefresh() : 'Never'}
+                      {lastRefresh ? formatLastRefresh() : "Never"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">API Status</span>
                     <div className="flex items-center gap-2">
-                      <div className={`h-2 w-2 rounded-full ${error ? 'bg-red-500' : 'bg-green-500'}`} />
+                      <div
+                        className={`h-2 w-2 rounded-full ${
+                          error ? "bg-red-500" : "bg-green-500"
+                        }`}
+                      />
                       <span className="text-xs text-muted-foreground">
-                        {error ? 'Error' : 'Healthy'}
+                        {error ? "Error" : "Healthy"}
                       </span>
                     </div>
                   </div>
@@ -608,21 +707,25 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           </div>
 
           {/* Revenue Analytics - Admin Only */}
-          {user?.role === 'Admin' && (
+          {user?.role === "Admin" && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Revenue
+                  </CardTitle>
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {realRevenue ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(realRevenue.totalRevenue) : '₹0'}
+                    {realRevenue
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(realRevenue.totalRevenue)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {realRevenue?.totalBills || 0} bills generated
@@ -637,17 +740,21 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Items Worth</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Items Worth
+                  </CardTitle>
                   <Package className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {totalItemsWorth ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(totalItemsWorth.totalItemsWorth) : '₹0'}
+                    {totalItemsWorth
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(totalItemsWorth.totalItemsWorth)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     {totalItemsWorth?.totalRequests || 0} fulfilled requests
@@ -660,24 +767,33 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Total Profit
+                  </CardTitle>
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">
-                    {realRevenue ? new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: 'INR',
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 0
-                    }).format(realRevenue.totalProfit) : '₹0'}
+                    {realRevenue
+                      ? new Intl.NumberFormat("en-IN", {
+                          style: "currency",
+                          currency: "INR",
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        }).format(realRevenue.totalProfit)
+                      : "₹0"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     From all shop sales
                   </p>
                   {realRevenue?.totalRevenue && realRevenue?.totalProfit && (
                     <p className="text-xs text-muted-foreground">
-                      Margin: {((realRevenue.totalProfit / realRevenue.totalRevenue) * 100).toFixed(1)}%
+                      Margin:{" "}
+                      {(
+                        (realRevenue.totalProfit / realRevenue.totalRevenue) *
+                        100
+                      ).toFixed(1)}
+                      %
                     </p>
                   )}
                 </CardContent>
@@ -685,15 +801,20 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Revenue vs Items</CardTitle>
+                  <CardTitle className="text-sm font-medium">
+                    Revenue vs Items
+                  </CardTitle>
                   <BarChart3 className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {realRevenue && totalItemsWorth ? 
-                      `${((realRevenue.totalRevenue / totalItemsWorth.totalItemsWorth) * 100).toFixed(0)}%` : 
-                      '0%'
-                    }
+                    {realRevenue && totalItemsWorth
+                      ? `${(
+                          (realRevenue.totalRevenue /
+                            totalItemsWorth.totalItemsWorth) *
+                          100
+                        ).toFixed(0)}%`
+                      : "0%"}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Revenue conversion rate
@@ -705,11 +826,11 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
               </Card>
             </div>
           )}
-          
+
           {/* Enhanced Analytics Dashboard */}
-          <EnhancedAnalyticsDashboard 
+          <EnhancedAnalyticsDashboard
             metrics={dashboardData?.metrics}
-            role={user?.role === 'Admin' ? 'Admin' : 'Shop_Owner'}
+            role={user?.role === "Admin" ? "Admin" : "Shop_Owner"}
           />
         </TabsContent>
 
@@ -727,18 +848,36 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Top Selling Products</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Top Selling Products
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {dashboardData?.metrics?.topSellingProducts?.slice(0, 3).map((product, index) => (
-                    <div key={product.productId} className="flex justify-between items-center">
-                      <span className="text-sm">{product.product?.flavor?.name || `Product ${index + 1}`}</span>
-                      <Badge variant={index === 0 ? "default" : index === 1 ? "secondary" : "outline"}>
-                        {product.quantity} units
-                      </Badge>
-                    </div>
-                  )) || (
+                  {dashboardData?.metrics?.topSellingProducts
+                    ?.slice(0, 3)
+                    .map((product, index) => (
+                      <div
+                        key={product.productId}
+                        className="flex justify-between items-center"
+                      >
+                        <span className="text-sm">
+                          {product.product?.flavor?.name ||
+                            `Product ${index + 1}`}
+                        </span>
+                        <Badge
+                          variant={
+                            index === 0
+                              ? "default"
+                              : index === 1
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {product.quantity} units
+                        </Badge>
+                      </div>
+                    )) || (
                     <div className="text-center text-muted-foreground py-4">
                       <p className="text-sm">No product data available</p>
                     </div>
@@ -749,22 +888,39 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Flavor Performance</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Flavor Performance
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {transformFlavorData(dashboardData?.metrics || {}).slice(0, 3).map((flavor, index) => {
-                    const percentage = Math.min(100, Math.max(0, (flavor.value / (flavor.value + (flavor.previousValue || 0))) * 100));
-                    return (
-                      <div key={flavor.label} className="flex justify-between items-center">
-                        <span className="text-sm">{flavor.label}</span>
-                        <div className="flex items-center gap-2">
-                          <Progress value={percentage} className="w-16 h-2" />
-                          <span className="text-xs">{Math.round(percentage)}%</span>
+                  {transformFlavorData(dashboardData?.metrics || {})
+                    .slice(0, 3)
+                    .map((flavor, index) => {
+                      const percentage = Math.min(
+                        100,
+                        Math.max(
+                          0,
+                          (flavor.value /
+                            (flavor.value + (flavor.previousValue || 0))) *
+                            100
+                        )
+                      );
+                      return (
+                        <div
+                          key={flavor.label}
+                          className="flex justify-between items-center"
+                        >
+                          <span className="text-sm">{flavor.label}</span>
+                          <div className="flex items-center gap-2">
+                            <Progress value={percentage} className="w-16 h-2" />
+                            <span className="text-xs">
+                              {Math.round(percentage)}%
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  }) || (
+                      );
+                    }) || (
                     <div className="text-center text-muted-foreground py-4">
                       <p className="text-sm">No flavor data available</p>
                     </div>
@@ -775,26 +931,32 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Inventory Status</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Inventory Status
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-sm">In Stock</span>
                     <Badge variant="default">
-                      {dashboardData?.metrics?.currentStockLevels?.totalItems || 0} products
+                      {dashboardData?.metrics?.currentStockLevels?.totalItems ||
+                        0}{" "}
+                      products
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Low Stock</span>
                     <Badge variant="destructive">
-                      {dashboardData?.metrics?.lowStockAlerts?.count || 0} products
+                      {dashboardData?.metrics?.lowStockAlerts?.count || 0}{" "}
+                      products
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Out of Stock</span>
                     <Badge variant="outline">
-                      {dashboardData?.metrics?.outOfStockItems?.count || 0} products
+                      {dashboardData?.metrics?.outOfStockItems?.count || 0}{" "}
+                      products
                     </Badge>
                   </div>
                 </div>
@@ -806,12 +968,14 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           {dashboardData?.metrics && (
             <div className="grid gap-6 md:grid-cols-2">
               <BarChart
-                data={transformCategoryData(dashboardData?.metrics || {}).map(item => ({
-                  label: item.label,
-                  value: item.value,
-                  previousValue: item.previousValue,
-                  growth: item.growth
-                }))}
+                data={transformCategoryData(dashboardData?.metrics || {}).map(
+                  (item) => ({
+                    label: item.label,
+                    value: item.value,
+                    previousValue: item.previousValue,
+                    growth: item.growth,
+                  })
+                )}
                 title="Product Sales Performance"
                 subtitle="Top selling products with growth indicators"
                 valueLabel="Units Sold"
@@ -819,11 +983,13 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
               />
 
               <DoughnutChart
-                data={transformFlavorData(dashboardData?.metrics || {}).map(item => ({
-                  label: item.label,
-                  value: item.value,
-                  color: item.color
-                }))}
+                data={transformFlavorData(dashboardData?.metrics || {}).map(
+                  (item) => ({
+                    label: item.label,
+                    value: item.value,
+                    color: item.color,
+                  })
+                )}
                 title="Flavor Distribution"
                 subtitle="Product flavor breakdown by sales volume"
                 showLegend={true}
@@ -846,18 +1012,33 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Top Performing Shops</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Top Performing Shops
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {dashboardData?.metrics?.shopPerformance?.slice(0, 3).map((shop, index) => (
-                    <div key={shop.id} className="flex justify-between items-center">
-                      <span className="text-sm">{shop.name}</span>
-                      <Badge variant={index === 0 ? "default" : index === 1 ? "secondary" : "outline"}>
-                        ₹{shop.totalRevenue?.toLocaleString() || 0}
-                      </Badge>
-                    </div>
-                  )) || (
+                  {dashboardData?.metrics?.shopPerformance
+                    ?.slice(0, 3)
+                    .map((shop, index) => (
+                      <div
+                        key={shop.id}
+                        className="flex justify-between items-center"
+                      >
+                        <span className="text-sm">{shop.name}</span>
+                        <Badge
+                          variant={
+                            index === 0
+                              ? "default"
+                              : index === 1
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          ₹{shop.totalRevenue?.toLocaleString() || 0}
+                        </Badge>
+                      </div>
+                    )) || (
                     <div className="text-center text-muted-foreground py-4">
                       <p className="text-sm">No shop data available</p>
                     </div>
@@ -868,7 +1049,9 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Shop Performance</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Shop Performance
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -881,14 +1064,21 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Total Revenue</span>
                     <Badge variant="secondary">
-                      ₹{dashboardData?.metrics?.totalRevenue?.total?.toLocaleString() || 0}
+                      ₹
+                      {dashboardData?.metrics?.totalRevenue?.total?.toLocaleString() ||
+                        0}
                     </Badge>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm">Avg. per Shop</span>
                     <Badge variant="outline">
-                      ₹{dashboardData?.metrics?.totalShops?.total ? 
-                        Math.round((dashboardData?.metrics?.totalRevenue?.total || 0) / dashboardData?.metrics?.totalShops?.total).toLocaleString() : 0}
+                      ₹
+                      {dashboardData?.metrics?.totalShops?.total
+                        ? Math.round(
+                            (dashboardData?.metrics?.totalRevenue?.total || 0) /
+                              dashboardData?.metrics?.totalShops?.total
+                          ).toLocaleString()
+                        : 0}
                     </Badge>
                   </div>
                 </div>
@@ -897,7 +1087,9 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Shop Status</CardTitle>
+                <CardTitle className="text-sm font-medium">
+                  Shop Status
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -927,12 +1119,14 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
           {/* Shop Charts */}
           <div className="grid gap-6 md:grid-cols-2">
             <BarChart
-              data={dashboardData?.metrics?.shopPerformance?.map(shop => ({
-                label: shop.name,
-                value: shop.totalRevenue,
-                previousValue: shop.previousRevenue,
-                growth: shop.revenueGrowth
-              })) || []}
+              data={
+                dashboardData?.metrics?.shopPerformance?.map((shop) => ({
+                  label: shop.name,
+                  value: shop.totalRevenue,
+                  previousValue: shop.previousRevenue,
+                  growth: shop.revenueGrowth,
+                })) || []
+              }
               title="Shop Revenue Performance"
               subtitle="Revenue by shop location with growth indicators"
               valueLabel="Revenue (INR)"
@@ -940,11 +1134,13 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({ 
             />
 
             <TrendChart
-              data={transformSalesTrendData(dashboardData?.metrics || {}).map(item => ({
-                date: item.date,
-                value: item.total,
-                previousValue: item.total * 0.85 // Estimate previous period as 85% of current
-              }))}
+              data={transformSalesTrendData(dashboardData?.metrics || {}).map(
+                (item) => ({
+                  date: item.date,
+                  value: item.total,
+                  previousValue: item.total * 0.85, // Estimate previous period as 85% of current
+                })
+              )}
               title="Shop Performance Trend"
               subtitle="Daily revenue trends across all shops"
               valueLabel="Revenue (INR)"

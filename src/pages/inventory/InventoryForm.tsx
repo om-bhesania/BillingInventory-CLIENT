@@ -137,8 +137,10 @@ const InventoryForm = () => {
     validationSchema,
     enableReinitialize: true, // This will cause formik to reset when initialValues change
     onSubmit: async (values) => {
+       console.log("values", values);
       try {
         setIsdataLoading(true);
+        console.log("values", values);
         let response;
         const formData = { ...values } as any;
 

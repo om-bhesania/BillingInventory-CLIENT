@@ -97,11 +97,15 @@ const EmployeeForm = () => {
     }
   }, [isEditing]);
   const formatedRoles = roleData
-    .filter((role: any) => role.name !== "Super_Admin" && role.name !== "Super Admin")
+    .filter(
+      (role: any) => role.name !== "Super_Admin" && role.name !== "Super Admin"
+    )
     .map((role: any) => ({
       id: role.id,
       name:
-        role.name === "Show_Owner" ? "Show Owner" : role.name.replace(/_/g, " "),
+        role.name === "Show_Owner"
+          ? "Show Owner"
+          : role.name.replace(/_/g, " "),
     }));
   const formik = useFormik({
     enableReinitialize: true,
@@ -431,7 +435,7 @@ const EmployeeForm = () => {
       <Separator className="my-6" />
 
       <div className="section-card">
-        <form onSubmit={formik.handleSubmit} className="space-y-6 max-w-2xl">
+        <form onSubmit={formik.handleSubmit} className="space-y-6 max-w-4xl">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-2">
               <Label htmlFor="name">Full Name *</Label>
@@ -488,7 +492,7 @@ const EmployeeForm = () => {
                 className={
                   formik.touched.contact && formik.errors.contact
                     ? "border-red-500"
-                    : ""
+                    : "mt-auto"
                 }
               />
               {formik.touched.contact && formik.errors.contact && (
@@ -497,14 +501,16 @@ const EmployeeForm = () => {
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="roleId">Role *</Label>
+              <Label htmlFor="roleId" className="flex-shrink-0">
+                Role *
+              </Label>
+
               <Select
                 value={formik.values.roleId}
                 onValueChange={(value: string) => {
                   const selectedRole = formatedRoles.find(
                     (role: any) => role.id === value
                   );
-                  console.log("first", selectedRole);
                   formik.setFieldValue("roleId", value);
                   formik.setFieldValue("roleName", selectedRole?.name);
                 }}
@@ -529,6 +535,13 @@ const EmployeeForm = () => {
               </Select>
               {formik.touched.roleId && formik.errors.roleId && (
                 <p className="text-sm text-red-500">{formik.errors.roleId}</p>
+              )}
+              {(formik.values.roleName === "Factory Employee" ||
+                formik.values.roleName === "Outlet Employee") && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  This role has no application permissions and is used only for
+                  record-keeping in the database.
+                </p>
               )}
             </div>
           </div>

@@ -447,7 +447,7 @@ console.log("values.publicId", values.publicId);
                     in the Employees section before they can be assigned as shop
                     owners or managers.
                   </p>
-                  {EmployeeData.filter((i: any) => i.role === "Shop_Owner" && i.managedShops?.length > 0).length > 0 && (
+                  {/* {EmployeeData.filter((i: any) => i.role === "Shop_Owner" && i.managedShops?.length > 0).length > 0 && (
                     <p className="text-xs text-blue-600 mt-1">
                       <strong>Currently managing shops:</strong>{" "}
                       {EmployeeData
@@ -455,15 +455,15 @@ console.log("values.publicId", values.publicId);
                         .map((emp: any) => `${emp.name} (${emp.managedShops.length})`)
                         .join(", ")}
                     </p>
-                  )}
+                  )} */}
                   {/* Debug info */}
-                  <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                  {/* <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                     <strong>Debug:</strong> publicId = "{values.publicId}", managerName = "{values.managerName}"
                     <br />
                     <strong>Form Status:</strong> isValid = {isValid ? "true" : "false"}, errors = {JSON.stringify(errors)}
                     <br />
                     <strong>Available Employees:</strong> {EmployeeData.filter((i: any) => i.role === "Shop_Owner" || i.role === "Shop Owner").length}
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">

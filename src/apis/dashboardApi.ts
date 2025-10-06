@@ -327,7 +327,7 @@ export const getTotalRevenue = async (): Promise<{
   lastUpdated: string;
 }> => {
   const response = await service<any>({
-    url: `${API_URL.base}/api/products/total-revenue`,
+    url: `${API_URL.base}/products/total-revenue`,
     method: "GET",
   });
   return response;
@@ -341,7 +341,7 @@ export const getTotalItemsWorth = async (): Promise<{
   lastUpdated: string;
 }> => {
   const response = await service<any>({
-    url: `${API_URL.base}/api/products/total-items-worth`,
+    url: `${API_URL.base}/products/total-items-worth`,
     method: "GET",
   });
   return response;

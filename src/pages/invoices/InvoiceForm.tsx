@@ -21,6 +21,7 @@ import { pingUser } from "@/apis/pingapi";
 import { getShop } from "@/apis/shopapi";
 import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
 import { createBilling } from "@/apis/billingApi";
+import { getNextInvoiceNumber } from "@/apis/billingApi";
 import { getProducts } from "@/apis/productapis";
 
 type RoleString = string | null | undefined;
@@ -47,6 +48,7 @@ const InvoiceForm = () => {
     invoiceNumber: "",
     customerName: "",
     customerEmail: "",
+    customerContact: "",
     shopId: "",
     invoiceDate: new Date().toISOString().split("T")[0],
     items: [] as InvoiceItem[],
@@ -55,6 +57,7 @@ const InvoiceForm = () => {
   });
 
   const [isLoading, setIsLoading] = useState(false);
+  const [canEditInvoiceNumber, setCanEditInvoiceNumber] = useState(false);
   const [userRole, setUserRole] = useState<RoleString>(null);
   const [managedShops, setManagedShops] = useState<
     { id: string; name: string }[]
@@ -104,6 +107,12 @@ const InvoiceForm = () => {
         }
 
         // Prefill next invoice number by looking up latest billing for selected shop once selected
+        try {
+          const next = await getNextInvoiceNumber();
+          if (next?.invoiceNumber) {
+            setFormData((prev) => ({ ...prev, invoiceNumber: next.invoiceNumber }));
+          }
+        } catch {}
       } catch (e) {
         console.error("Failed to initialize invoice form", e);
       } finally {
@@ -165,6 +174,13 @@ const InvoiceForm = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
+    if (name === "customerContact") {
+      // Accept only digits, max 10, format as 12345 12345
+      const digits = value.replace(/\D/g, "").slice(0, 10);
+      const formatted = digits.replace(/(\d{5})(\d{0,5})/, (_, a, b) => (b ? `${a} ${b}` : a));
+      setFormData({ ...formData, [name]: formatted });
+      return;
+    }
     setFormData({ ...formData, [name]: value });
   };
 
@@ -269,6 +285,11 @@ const InvoiceForm = () => {
     return calculateSubtotal() + calculateTotalTax();
   };
 
+  const isValidIndianPhone = (val: string) => {
+    const digits = (val || "").replace(/\D/g, "");
+    return digits.length === 10;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -277,6 +298,11 @@ const InvoiceForm = () => {
         "Validation Error",
         "Please fill all required fields and add at least one item"
       );
+      return;
+    }
+
+    if (formData.customerContact && !isValidIndianPhone(formData.customerContact)) {
+      showError("Validation Error", "Please enter a valid 10-digit Indian phone number");
       return;
     }
 
@@ -305,6 +331,9 @@ const InvoiceForm = () => {
         invoiceNumber: formData.invoiceNumber || undefined,
         customerName: formData.customerName,
         customerEmail: formData.customerEmail || undefined,
+        customerContact: formData.customerContact
+          ? formData.customerContact.replace(/\D/g, "")
+          : undefined,
         invoiceType: formData.invoiceType,
         items: formData.items.map((it) => ({
           productId: it.productId,
@@ -431,7 +460,19 @@ const InvoiceForm = () => {
                 name="invoiceNumber"
                 value={formData.invoiceNumber}
                 onChange={handleChange}
-                placeholder="e.g., 0004"
+                onClick={() => {
+                  if (canEditInvoiceNumber) return;
+                  showConfirm(
+                    "Edit Invoice Number?",
+                    "This number is auto-generated. Do you want to edit it manually?",
+                    () => setCanEditInvoiceNumber(true),
+                    undefined,
+                    "Yes, allow editing",
+                    "No"
+                  );
+                }}
+                disabled={!canEditInvoiceNumber}
+                placeholder="Auto-generated"
               />
             </div>
             <div>
@@ -454,6 +495,18 @@ const InvoiceForm = () => {
                 value={formData.customerEmail}
                 onChange={handleChange}
                 placeholder="Enter customer email (optional)"
+              />
+            </div>
+            <div>
+              <Label htmlFor="customerContact">Customer Contact</Label>
+              <Input
+                id="customerContact"
+                name="customerContact"
+                value={formData.customerContact}
+                onChange={handleChange}
+                placeholder="12345 12345"
+                inputMode="numeric"
+                pattern="\\d{5} \\d{5}"
               />
             </div>
           </div>

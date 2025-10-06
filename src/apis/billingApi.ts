@@ -14,6 +14,7 @@ export interface Billing {
   shopId: string;
   customerName?: string;
   customerEmail?: string;
+  customerContact?: string;
   items: BillingItem[];
   subtotal: number;
   tax: number;
@@ -34,6 +35,7 @@ export interface CreateBillingRequest {
   invoiceNumber?: string;
   customerName?: string;
   customerEmail?: string;
+  customerContact?: string;
   items: Omit<BillingItem, "total">[];
   subtotal: number;
   tax?: number;
@@ -79,4 +81,9 @@ export const updateBillingPaymentStatus = async (id: string, data: UpdatePayment
 // Get billing statistics for a shop
 export const getBillingStats = async (shopId: string): Promise<BillingStats> => {
   return service<BillingStats>({ url: API_URL.billing.stats(shopId), method: "GET" });
+};
+
+// Get next invoice number
+export const getNextInvoiceNumber = async (): Promise<{ invoiceNumber: string }> => {
+  return service<{ invoiceNumber: string }>({ url: `${API_URL.billing.create}/next-invoice-number`.replace(/\/$/, "") , method: "GET" });
 };
