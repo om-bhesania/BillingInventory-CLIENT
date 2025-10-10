@@ -168,24 +168,24 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({
   const [totalItemsWorth, setTotalItemsWorth] = useState<any>(null);
 
   // Fetch new revenue data
-  useEffect(() => {
-    const fetchRevenueData = async () => {
-      if (user?.role === "Admin") {
-        try {
-          const [revenueData, itemsWorthData] = await Promise.all([
-            getTotalRevenue(),
-            getTotalItemsWorth(),
-          ]);
-          setRealRevenue(revenueData);
-          setTotalItemsWorth(itemsWorthData);
-        } catch (error) {
-          console.error("Error fetching revenue data:", error);
-        }
-      }
-    };
+  // useEffect(() => {
+  //   const fetchRevenueData = async () => {
+  //     if (user?.role === "Admin") {
+  //       try {
+  //         // const [revenueData, itemsWorthData] = await Promise.all([
+  //         //   getTotalRevenue(),
+  //         //   getTotalItemsWorth(),
+  //         // ]);
+  //         setRealRevenue(revenueData);
+  //         setTotalItemsWorth(itemsWorthData);
+  //       } catch (error) {
+  //         console.error("Error fetching revenue data:", error);
+  //       }
+  //     }
+  //   };
 
-    fetchRevenueData();
-  }, [user?.role]);
+  //   fetchRevenueData();
+  // }, [user?.role]);
 
   // WebSocket listener for real-time revenue updates
   useEffect(() => {

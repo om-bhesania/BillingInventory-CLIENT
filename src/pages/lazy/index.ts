@@ -5,7 +5,7 @@ import { lazy } from 'react';
 export const Dashboard = lazy(() => import('../Dashboard'));
 export const InventoryList = lazy(() => import('../inventory/InventoryList'));
 export const InventoryForm = lazy(() => import('../inventory/InventoryForm'));
-export const InventoryView = lazy(() => import('../Inventory/InventoryView'));
+export const InventoryView = lazy(() => import('../inventory/InventoryView'));
 export const Tickets = lazy(() => import('../Tickets'));
 export const InvoiceList = lazy(() => import('../invoices/InvoiceList'));
 export const InvoiceForm = lazy(() => import('../invoices/InvoiceForm'));
