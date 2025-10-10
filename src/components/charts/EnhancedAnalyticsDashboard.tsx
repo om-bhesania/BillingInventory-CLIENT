@@ -189,21 +189,19 @@ export const EnhancedAnalyticsDashboard: React.FC<
   return (
     <div className={cn("space-y-6", className)}>
       {/* Header with Date Range and Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-4 bg-white rounded-lg border shadow-sm">
+      <div className={`flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 p-4 bg-white rounded-lg border shadow-sm ${role === "Admin" && 'hidden' } `}>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {role === "Admin"
-              ? "System Analytics Dashboard"
-              : "Shop Analytics Dashboard"}
+            {role !== "Admin" ? "Shop Analytics Dashboard" : ""}
           </h1>
           <p className="text-gray-600 mt-1">
             {role === "Admin"
-              ? "Monitor all shops, products, and system performance"
-              : "Track your shop performance and optimize operations"}
+              ? ""
+              : "Monitor all shops, products, and system performance"}
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        {/* <div className="flex flex-col sm:flex-row items-center gap-3">
           <DateRangePicker
             dateRange={dateRange}
             onDateRangeChange={handleDateRangeChange}
@@ -227,7 +225,7 @@ export const EnhancedAnalyticsDashboard: React.FC<
               Export
             </Button>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Date Range Info */}

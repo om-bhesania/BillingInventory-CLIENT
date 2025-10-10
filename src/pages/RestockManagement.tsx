@@ -43,8 +43,14 @@ interface RestockRequest {
   shopId: string;
   productId: string;
   requestedAmount: number;
-  status: "waiting_for_approval" | "approved_pending" | "fulfilled" | "rejected" | "pending" | "approved";
-  requestType?: 'RESTOCK' | 'INVENTORY_ADD';
+  status:
+    | "waiting_for_approval"
+    | "approved_pending"
+    | "fulfilled"
+    | "rejected"
+    | "pending"
+    | "approved";
+  requestType?: "RESTOCK" | "INVENTORY_ADD";
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -79,7 +85,7 @@ const RestockManagement: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const wsService = getWebSocketService();
-  
+
   // Status update dialog state
   const [statusUpdateDialog, setStatusUpdateDialog] = useState<{
     open: boolean;
@@ -124,74 +130,103 @@ const RestockManagement: React.FC = () => {
   // WebSocket listeners for real-time updates
   useEffect(() => {
     const handleRestockRequestCreated = (data: any) => {
-      console.log('Restock request created:', data);
-      console.log('Data structure:', JSON.stringify(data, null, 2));
+      console.log("Restock request created:", data);
+      console.log("Data structure:", JSON.stringify(data, null, 2));
       if (data.notification?.data?.requestId) {
         // Refresh the requests list to get the new request
         fetchRequests();
       } else {
-        console.warn('No requestId found in restock request created event:', data);
+        console.warn(
+          "No requestId found in restock request created event:",
+          data
+        );
       }
     };
 
     const handleRestockRequestApproved = (data: any) => {
-      console.log('Restock request approved:', data);
+      console.log("Restock request approved:", data);
       if (data.notification?.data?.requestId) {
         // Update the specific request in the list
-        setRequests(prev => prev.map(req => 
-          req.id === data.notification.data.requestId 
-            ? { ...req, status: 'approved', updatedAt: new Date().toISOString() }
-            : req
-        ));
+        setRequests((prev) =>
+          prev.map((req) =>
+            req.id === data.notification.data.requestId
+              ? {
+                  ...req,
+                  status: "approved",
+                  updatedAt: new Date().toISOString(),
+                }
+              : req
+          )
+        );
       }
     };
 
     const handleRestockRequestRejected = (data: any) => {
-      console.log('Restock request rejected:', data);
+      console.log("Restock request rejected:", data);
       if (data.notification?.data?.requestId) {
         // Update the specific request in the list
-        setRequests(prev => prev.map(req => 
-          req.id === data.notification.data.requestId 
-            ? { ...req, status: 'rejected', updatedAt: new Date().toISOString() }
-            : req
-        ));
+        setRequests((prev) =>
+          prev.map((req) =>
+            req.id === data.notification.data.requestId
+              ? {
+                  ...req,
+                  status: "rejected",
+                  updatedAt: new Date().toISOString(),
+                }
+              : req
+          )
+        );
       }
     };
 
     const handleRestockRequestStatusUpdated = (data: any) => {
-      console.log('Restock request status updated:', data);
+      console.log("Restock request status updated:", data);
       if (data.notification?.data?.requestId) {
         // Update the specific request in the list
-        setRequests(prev => prev.map(req => 
-          req.id === data.notification.data.requestId 
-            ? { ...req, status: data.notification.data.status, updatedAt: new Date().toISOString() }
-            : req
-        ));
+        setRequests((prev) =>
+          prev.map((req) =>
+            req.id === data.notification.data.requestId
+              ? {
+                  ...req,
+                  status: data.notification.data.status,
+                  updatedAt: new Date().toISOString(),
+                }
+              : req
+          )
+        );
       }
     };
 
     const handleRestockRequestFulfilled = (data: any) => {
-      console.log('Restock request fulfilled:', data);
+      console.log("Restock request fulfilled:", data);
       if (data.notification?.data?.requestId) {
         // Update the specific request in the list
-        setRequests(prev => prev.map(req => 
-          req.id === data.notification.data.requestId 
-            ? { ...req, status: 'fulfilled', updatedAt: new Date().toISOString() }
-            : req
-        ));
+        setRequests((prev) =>
+          prev.map((req) =>
+            req.id === data.notification.data.requestId
+              ? {
+                  ...req,
+                  status: "fulfilled",
+                  updatedAt: new Date().toISOString(),
+                }
+              : req
+          )
+        );
       }
     };
 
     const handleRestockRequestHidden = (data: any) => {
-      console.log('Restock request hidden:', data);
+      console.log("Restock request hidden:", data);
       if (data.notification?.data?.requestId) {
         // Remove the hidden request from the list
-        setRequests(prev => prev.filter(req => req.id !== data.notification.data.requestId));
+        setRequests((prev) =>
+          prev.filter((req) => req.id !== data.notification.data.requestId)
+        );
       }
     };
 
     const handleRestockRequestAutoGenerated = (data: any) => {
-      console.log('Restock request auto generated:', data);
+      console.log("Restock request auto generated:", data);
       if (data.notification?.data?.requestId) {
         // Refresh the requests list to get the new auto-generated request
         fetchRequests();
@@ -199,23 +234,35 @@ const RestockManagement: React.FC = () => {
     };
 
     // Subscribe to websocket events
-    wsService.on('restock_request_created', handleRestockRequestCreated);
-    wsService.on('restock_request_approved', handleRestockRequestApproved);
-    wsService.on('restock_request_rejected', handleRestockRequestRejected);
-    wsService.on('restock_request_status_updated', handleRestockRequestStatusUpdated);
-    wsService.on('restock_request_fulfilled', handleRestockRequestFulfilled);
-    wsService.on('restock_request_hidden', handleRestockRequestHidden);
-    wsService.on('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+    wsService.on("restock_request_created", handleRestockRequestCreated);
+    wsService.on("restock_request_approved", handleRestockRequestApproved);
+    wsService.on("restock_request_rejected", handleRestockRequestRejected);
+    wsService.on(
+      "restock_request_status_updated",
+      handleRestockRequestStatusUpdated
+    );
+    wsService.on("restock_request_fulfilled", handleRestockRequestFulfilled);
+    wsService.on("restock_request_hidden", handleRestockRequestHidden);
+    wsService.on(
+      "restock_request_auto_generated",
+      handleRestockRequestAutoGenerated
+    );
 
     return () => {
       // Cleanup listeners
-      wsService.off('restock_request_created', handleRestockRequestCreated);
-      wsService.off('restock_request_approved', handleRestockRequestApproved);
-      wsService.off('restock_request_rejected', handleRestockRequestRejected);
-      wsService.off('restock_request_status_updated', handleRestockRequestStatusUpdated);
-      wsService.off('restock_request_fulfilled', handleRestockRequestFulfilled);
-      wsService.off('restock_request_hidden', handleRestockRequestHidden);
-      wsService.off('restock_request_auto_generated', handleRestockRequestAutoGenerated);
+      wsService.off("restock_request_created", handleRestockRequestCreated);
+      wsService.off("restock_request_approved", handleRestockRequestApproved);
+      wsService.off("restock_request_rejected", handleRestockRequestRejected);
+      wsService.off(
+        "restock_request_status_updated",
+        handleRestockRequestStatusUpdated
+      );
+      wsService.off("restock_request_fulfilled", handleRestockRequestFulfilled);
+      wsService.off("restock_request_hidden", handleRestockRequestHidden);
+      wsService.off(
+        "restock_request_auto_generated",
+        handleRestockRequestAutoGenerated
+      );
     };
   }, [wsService]);
 
@@ -352,8 +399,8 @@ const RestockManagement: React.FC = () => {
       console.error("Error updating status:", error);
       Swal.fire({
         icon: "error",
-        title: "Error",
-        text: "Failed to update status",
+        text: error?.response?.data.error,
+        timer: 3000,
       });
     }
   };
@@ -525,7 +572,9 @@ const RestockManagement: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="waiting_for_approval">Waiting for Approval</SelectItem>
+                <SelectItem value="waiting_for_approval">
+                  Waiting for Approval
+                </SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="in_transit">In Transit</SelectItem>
@@ -608,7 +657,9 @@ const RestockManagement: React.FC = () => {
                 {filteredRequests.map((request) => (
                   <tr key={request.id} className="border-b hover:bg-gray-50">
                     <td className="p-3">
-                      <Badge variant="outline">{(request.requestType || 'RESTOCK').replace('_', ' ')}</Badge>
+                      <Badge variant="outline">
+                        {(request.requestType || "RESTOCK").replace("_", " ")}
+                      </Badge>
                     </td>
                     <td className="p-3">
                       <div>
@@ -695,35 +746,42 @@ const RestockManagement: React.FC = () => {
       </Card>
 
       {/* Status Update Dialog */}
-      <Dialog open={statusUpdateDialog.open} onOpenChange={closeStatusUpdateDialog}>
+      <Dialog
+        open={statusUpdateDialog.open}
+        onOpenChange={closeStatusUpdateDialog}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {statusUpdateDialog.request?.status === "waiting_for_approval" 
-                ? "Approve or Reject Request" 
+              {statusUpdateDialog.request?.status === "waiting_for_approval"
+                ? "Approve or Reject Request"
                 : "Update Request Status"}
             </DialogTitle>
             <DialogDescription>
-              {statusUpdateDialog.request?.status === "waiting_for_approval" 
+              {statusUpdateDialog.request?.status === "waiting_for_approval"
                 ? `Review and approve/reject the request for ${statusUpdateDialog.request?.product.name}`
                 : `Update status for ${statusUpdateDialog.request?.product.name}`}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div>
               <Label htmlFor="status-select">New Status</Label>
               <Select
                 value={statusUpdateDialog.newStatus}
                 onValueChange={(value) =>
-                  setStatusUpdateDialog(prev => ({ ...prev, newStatus: value }))
+                  setStatusUpdateDialog((prev) => ({
+                    ...prev,
+                    newStatus: value,
+                  }))
                 }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  {statusUpdateDialog.request?.status === "waiting_for_approval" ? (
+                  {statusUpdateDialog.request?.status ===
+                  "waiting_for_approval" ? (
                     // For waiting for approval requests, show approve/reject/cancel options
                     <>
                       <SelectItem value="approved">Approve</SelectItem>
@@ -741,15 +799,22 @@ const RestockManagement: React.FC = () => {
                     // For approved requests, show in_transit/fulfilled/cancel options
                     <>
                       <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="in_transit">Mark as In Transit</SelectItem>
-                      <SelectItem value="fulfilled">Mark as Fulfilled</SelectItem>
+                      <SelectItem value="in_transit">
+                        Mark as In Transit
+                      </SelectItem>
+                      <SelectItem value="fulfilled">
+                        Mark as Fulfilled
+                      </SelectItem>
                       <SelectItem value="cancelled">Cancel</SelectItem>
                     </>
-                  ) : statusUpdateDialog.request?.status === "in_transit" ? (
+                  ) : // @ts-ignore
+                  statusUpdateDialog.request?.status === "in_transit" ? (
                     // For in_transit requests, show fulfilled/cancel options
                     <>
                       <SelectItem value="in_transit">In Transit</SelectItem>
-                      <SelectItem value="fulfilled">Mark as Fulfilled</SelectItem>
+                      <SelectItem value="fulfilled">
+                        Mark as Fulfilled
+                      </SelectItem>
                       <SelectItem value="cancelled">Cancel</SelectItem>
                     </>
                   ) : statusUpdateDialog.request?.status === "fulfilled" ? (
@@ -762,7 +827,8 @@ const RestockManagement: React.FC = () => {
                     <>
                       <SelectItem value="rejected">Rejected</SelectItem>
                     </>
-                  ) : statusUpdateDialog.request?.status === "cancelled" ? (
+                  ) : //@ts-ignore
+                  statusUpdateDialog.request?.status === "cancelled" ? (
                     // For cancelled requests, show current status only
                     <>
                       <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -770,15 +836,23 @@ const RestockManagement: React.FC = () => {
                   ) : (
                     // For other statuses, show current status only
                     <>
-                      <SelectItem value={statusUpdateDialog.request?.status || "waiting_for_approval"}>
-                        {getStatusDisplayText(statusUpdateDialog.request?.status || "waiting_for_approval")}
+                      <SelectItem
+                        value={
+                          statusUpdateDialog.request?.status ||
+                          "waiting_for_approval"
+                        }
+                      >
+                        {getStatusDisplayText(
+                          statusUpdateDialog.request?.status ||
+                            "waiting_for_approval"
+                        )}
                       </SelectItem>
                     </>
                   )}
                 </SelectContent>
               </Select>
             </div>
-            
+
             <div>
               <Label htmlFor="status-notes">Notes (Optional)</Label>
               <Textarea
@@ -786,28 +860,45 @@ const RestockManagement: React.FC = () => {
                 placeholder="Add any notes about this status change..."
                 value={statusUpdateDialog.notes}
                 onChange={(e) =>
-                  setStatusUpdateDialog(prev => ({ ...prev, notes: e.target.value }))
+                  setStatusUpdateDialog((prev) => ({
+                    ...prev,
+                    notes: e.target.value,
+                  }))
                 }
                 rows={3}
               />
             </div>
-            
+
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={closeStatusUpdateDialog}>
                 Cancel
               </Button>
               <Button onClick={handleStatusUpdate}>
-                {statusUpdateDialog.request?.status === "waiting_for_approval" || statusUpdateDialog.request?.status === "pending"
-                  ? (statusUpdateDialog.newStatus === "approved" ? "Approve" : 
-                     statusUpdateDialog.newStatus === "rejected" ? "Reject" : 
-                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                {statusUpdateDialog.request?.status ===
+                  "waiting_for_approval" ||
+                statusUpdateDialog.request?.status === "pending"
+                  ? statusUpdateDialog.newStatus === "approved"
+                    ? "Approve"
+                    : statusUpdateDialog.newStatus === "rejected"
+                    ? "Reject"
+                    : statusUpdateDialog.newStatus === "cancelled"
+                    ? "Cancel"
+                    : "Update Status"
                   : statusUpdateDialog.request?.status === "approved"
-                  ? (statusUpdateDialog.newStatus === "in_transit" ? "Mark as In Transit" : 
-                     statusUpdateDialog.newStatus === "fulfilled" ? "Mark as Fulfilled" : 
-                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                  ? statusUpdateDialog.newStatus === "in_transit"
+                    ? "Mark as In Transit"
+                    : statusUpdateDialog.newStatus === "fulfilled"
+                    ? "Mark as Fulfilled"
+                    : statusUpdateDialog.newStatus === "cancelled"
+                    ? "Cancel"
+                    : "Update Status"
+                    //@ts-ignore
                   : statusUpdateDialog.request?.status === "in_transit"
-                  ? (statusUpdateDialog.newStatus === "fulfilled" ? "Mark as Fulfilled" : 
-                     statusUpdateDialog.newStatus === "cancelled" ? "Cancel" : "Update Status")
+                  ? statusUpdateDialog.newStatus === "fulfilled"
+                    ? "Mark as Fulfilled"
+                    : statusUpdateDialog.newStatus === "cancelled"
+                    ? "Cancel"
+                    : "Update Status"
                   : "Update Status"}
               </Button>
             </div>

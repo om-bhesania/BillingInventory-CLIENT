@@ -698,16 +698,16 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({
 
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-6">
-          <div className="flex items-center justify-between">
+          {/* <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Advanced Analytics</h3>
             <Badge variant="secondary">
               <BarChart3 className="h-3 w-3 mr-1" />
               Charts & Insights
             </Badge>
-          </div>
+          </div> */}
 
-          {/* Revenue Analytics - Admin Only */}
-          {user?.role === "Admin" && (
+          
+          {/* {user?.role === "Admin" && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -825,7 +825,7 @@ export const ComprehensiveDashboard: React.FC<ComprehensiveDashboardProps> = ({
                 </CardContent>
               </Card>
             </div>
-          )}
+          )} */}
 
           {/* Enhanced Analytics Dashboard */}
           <EnhancedAnalyticsDashboard

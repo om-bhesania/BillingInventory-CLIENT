@@ -15,15 +15,21 @@ export const BaseChart: React.FC<BaseChartProps> = ({
   subtitle 
 }) => {
   return (
-    <Card className={`${className} h-auto`}>
+    <Card className={`${className} h-auto ${title}`}>
       <CardHeader>
         <CardTitle className="text-lg font-semibold">{title}</CardTitle>
         {subtitle && (
           <p className="text-sm text-muted-foreground">{subtitle}</p>
         )}
       </CardHeader>
-      <CardContent>
-        <div className="w-full h-64">{children}</div>
+      <CardContent
+        className={`${
+          title !== "Category Distribution" || "Flavor Distribution"
+            ? "h-[25rem]"
+            : "h-[18rem]"
+        } ${title}`}
+      >
+        <div className="w-full h-auto max-h-[18rem]">{children}</div>
       </CardContent>
     </Card>
   );
