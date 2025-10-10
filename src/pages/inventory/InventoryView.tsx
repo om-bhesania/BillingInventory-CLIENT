@@ -260,10 +260,14 @@ const InventoryView: React.FC = () => {
   };
 
   const getStockStatus = (currentStock: number, minStockLevel?: number) => {
-    if (!minStockLevel) return "normal";
-    if (currentStock === 0) return "out-of-stock";
-    if (currentStock <= minStockLevel) return "low-stock";
-    return "normal";
+    switch (true) {
+      case currentStock === 0:
+        return "out-of-stock";
+      case minStockLevel && currentStock <= minStockLevel:
+        return "low-stock";
+      default:
+        return "normal";
+    }
   };
 
   const getStockStatusColor = (status: string) => {

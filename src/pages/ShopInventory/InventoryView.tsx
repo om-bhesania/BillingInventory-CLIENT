@@ -46,6 +46,7 @@ interface InventoryItem extends ShopInventoryItem {
 }
 
 function InventoryView() {
+  console.log('inventoryu view')
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
@@ -112,6 +113,7 @@ function InventoryView() {
         stockStatus: getStockStatus(item.currentStock, item.minStockPerItem),
         stockTrend: getStockTrend(item.currentStock, item.minStockPerItem),
       }));
+      console.log('itemWithStatus', itemsWithStatus);
       setInventoryItems(itemsWithStatus);
     } catch (error) {
       console.error('Error fetching inventory items:', error);
@@ -126,7 +128,8 @@ function InventoryView() {
   };
 
   const getStockStatus = (currentStock: number, minStockLevel?: number): 'normal' | 'low-stock' | 'out-of-stock' => {
-    if (currentStock === 0) return 'out-of-stock';
+    console.log("currentStock", currentStock);
+    if (currentStock === 0 || "0") return 'out-of-stock';
     if (minStockLevel && currentStock <= minStockLevel) return 'low-stock';
     return 'normal';
   };
