@@ -110,7 +110,10 @@ const InvoiceForm = () => {
         try {
           const next = await getNextInvoiceNumber();
           if (next?.invoiceNumber) {
-            setFormData((prev) => ({ ...prev, invoiceNumber: next.invoiceNumber }));
+            setFormData((prev) => ({
+              ...prev,
+              invoiceNumber: next.invoiceNumber,
+            }));
           }
         } catch {}
       } catch (e) {
@@ -177,7 +180,9 @@ const InvoiceForm = () => {
     if (name === "customerContact") {
       // Accept only digits, max 10, format as 12345 12345
       const digits = value.replace(/\D/g, "").slice(0, 10);
-      const formatted = digits.replace(/(\d{5})(\d{0,5})/, (_, a, b) => (b ? `${a} ${b}` : a));
+      const formatted = digits.replace(/(\d{5})(\d{0,5})/, (_, a, b) =>
+        b ? `${a} ${b}` : a
+      );
       setFormData({ ...formData, [name]: formatted });
       return;
     }
@@ -301,8 +306,14 @@ const InvoiceForm = () => {
       return;
     }
 
-    if (formData.customerContact && !isValidIndianPhone(formData.customerContact)) {
-      showError("Validation Error", "Please enter a valid 10-digit Indian phone number");
+    if (
+      formData.customerContact &&
+      !isValidIndianPhone(formData.customerContact)
+    ) {
+      showError(
+        "Validation Error",
+        "Please enter a valid 10-digit Indian phone number"
+      );
       return;
     }
 
@@ -506,7 +517,7 @@ const InvoiceForm = () => {
                 onChange={handleChange}
                 placeholder="12345 12345"
                 inputMode="numeric"
-                pattern="\\d{5} \\d{5}"
+                max={10}
               />
             </div>
           </div>
