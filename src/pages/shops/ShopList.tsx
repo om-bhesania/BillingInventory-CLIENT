@@ -1,7 +1,7 @@
 import { deleteShop, getShop, updateShop } from "@/apis/shopapi";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import Table from "@/components/ui/table";
+import Table from "@/components/ui/material-table";
 import { useAuth } from "@/contexts/AuthContext";
 import { Plus } from "lucide-react";
 import { MRT_ColumnDef } from "material-react-table";

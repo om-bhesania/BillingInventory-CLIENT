@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import Table from "@/components/ui/table";
+import Table from "@/components/ui/material-table";
 import { Minus, Plus, Trash2, Printer } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";

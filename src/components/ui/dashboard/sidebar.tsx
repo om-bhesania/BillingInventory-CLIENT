@@ -45,7 +45,11 @@ const Sidebar: React.FC = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const location = useLocation();
   const { user, logout, isLoading: authLoading, isInitialized } = useAuth();
-  const { hasPermission, isModuleAccessible, isLoading: permissionsLoading } = usePermissions();
+  const {
+    hasPermission,
+    isModuleAccessible,
+    isLoading: permissionsLoading,
+  } = usePermissions();
   const notificationCounts = useSidebarNotifications();
 
   // Navigation with permissions info
@@ -248,6 +252,20 @@ const Sidebar: React.FC = () => {
       module: "Audit Log",
       requiredActions: ["read"],
     },
+    {
+      title: "Raw Materials",
+      icon: PackageIcon,
+      href: "/raw-materials",
+      module: "Raw Materials",
+      requiredActions: ["read"],
+    },
+    {
+      title: "Suppliers",
+      icon: UsersIcon,
+      href: "/suppliers",
+      module: "Suppliers",
+      requiredActions: ["read"],
+    },
   ];
 
   // Check if user has all required actions for item
@@ -285,7 +303,14 @@ const Sidebar: React.FC = () => {
     };
 
     return navItems.map(filterNavItem).filter((i): i is NavItem => i !== null);
-  }, [authLoading, permissionsLoading, isInitialized, user, hasPermission, isModuleAccessible]);
+  }, [
+    authLoading,
+    permissionsLoading,
+    isInitialized,
+    user,
+    hasPermission,
+    isModuleAccessible,
+  ]);
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) => ({ ...prev, [title]: !prev[title] }));
@@ -341,7 +366,9 @@ const Sidebar: React.FC = () => {
             {isExpanded && (
               <div className="ml-6 mt-1 space-y-1">
                 {item.children.map((child) => {
-                  const childNotificationCount = getNotificationCount(child.module || "");
+                  const childNotificationCount = getNotificationCount(
+                    child.module || ""
+                  );
                   return (
                     <Link
                       key={child.title}
@@ -355,7 +382,10 @@ const Sidebar: React.FC = () => {
                     >
                       <div className="h-1 w-1 rounded-full bg-current" />
                       <span>{child.title}</span>
-                      <NotificationBadge count={childNotificationCount} size="sm" />
+                      <NotificationBadge
+                        count={childNotificationCount}
+                        size="sm"
+                      />
                     </Link>
                   );
                 })}
@@ -402,7 +432,7 @@ const Sidebar: React.FC = () => {
     }
 
     const filteredItems = getFilteredNavItems;
-    
+
     // If no items after loading, show a message
     if (filteredItems.length === 0) {
       return (

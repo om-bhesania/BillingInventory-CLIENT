@@ -123,4 +123,32 @@ export const API_URL = {
     verifyPayment: "/payments/verify",
     getPaymentDetails: "/payments",
   },
+  // Raw Material Management APIs
+  rawMaterialCategories: {
+    create: "/raw-material-categories",
+    getAll: "/raw-material-categories",
+    getById: (id: string) => `/raw-material-categories/${id}`,
+    update: (id: string) => `/raw-material-categories/${id}`,
+    delete: (id: string) => `/raw-material-categories/${id}`,
+  },
+  suppliers: {
+    create: "/suppliers",
+    getAll: "/suppliers",
+    getById: (id: string) => `/suppliers/${id}`,
+    update: (id: string) => `/suppliers/${id}`,
+    delete: (id: string) => `/suppliers/${id}`,
+  },
+  rawMaterials: {
+    create: "/raw-materials",
+    getAll: "/raw-materials",
+    getById: (id: string) => `/raw-materials/${id}`,
+    update: (id: string) => `/raw-materials/${id}`,
+    delete: (id: string) => `/raw-materials/${id}`,
+  },
+  rawMaterialInventory: {
+    create: "/raw-material-inventory",
+    getAll: "/raw-material-inventory",
+    update: (id: string) => `/raw-material-inventory/${id}`,
+    delete: (id: string) => `/raw-material-inventory/${id}`,
+  },
 };

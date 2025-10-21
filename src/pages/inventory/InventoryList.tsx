@@ -1,7 +1,7 @@
 import { deleteProduct, getProducts } from "@/apis/productapis";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import Table from "@/components/ui/table";
+import Table from "@/components/ui/material-table";
 import useToast from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useEffect, useState } from "react";

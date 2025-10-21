@@ -34,6 +34,10 @@ import {
   EnhancedDatePickerDemo
 } from "./pages/lazy";
 
+// Import new raw material pages
+import RawMaterialManagement from "./pages/RawMaterialManagement";
+import Suppliers from "./pages/Suppliers";
+
  
 // Types
 interface RoutePermission {
@@ -292,6 +296,18 @@ const AppRoutes: React.FC = () => {
       path: "/cache-management",
       element: <CacheManagement />,
       permissions: [{ module: "Cache Management", action: "read" }],
+    },
+
+    // Raw Material Management Routes
+    {
+      path: "/raw-materials",
+      element: <RawMaterialManagement />,
+      permissions: [{ module: "Raw Materials", action: "read" }],
+    },
+    {
+      path: "/suppliers",
+      element: <Suppliers />,
+      permissions: [{ module: "Raw Materials", action: "read" }],
     },
   ];
 
