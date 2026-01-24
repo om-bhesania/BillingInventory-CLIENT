@@ -19,6 +19,8 @@ import {
   Database,
   Zap,
   MessageCircle,
+  ChefHat,
+  Factory,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ const Sidebar: React.FC = () => {
 
   // Navigation with permissions info
   const navItems: NavItem[] = [
+
     {
       title: "Dashboard",
       href: "/",
@@ -66,7 +69,7 @@ const Sidebar: React.FC = () => {
       href: "/search",
       icon: Search,
       module: "Search",
-      requiredActions: ["read"],
+      requiredActions: [""],
     },
     {
       title: "Database Monitoring",
@@ -81,6 +84,13 @@ const Sidebar: React.FC = () => {
       icon: Zap,
       module: "Cache Management",
       requiredActions: ["read"],
+    },
+    {
+      title: "───────────────────",
+      icon: undefined,
+      href: "",
+      module: "",
+      requiredActions: [""],
     },
     {
       title: "Inventory Management",
@@ -233,14 +243,14 @@ const Sidebar: React.FC = () => {
       title: "Support Tickets",
       icon: MessageCircle,
       module: "Support",
-      requiredActions: ["read"],
+      requiredActions: [""],
       children: [
         {
           title: "Manage Tickets",
           href: "/tickets",
           icon: MessageCircle,
           module: "Support",
-          requiredActions: ["read"],
+          requiredActions: [""],
         },
       ],
     },
@@ -250,14 +260,65 @@ const Sidebar: React.FC = () => {
       icon: FileText,
       href: "/audit-log",
       module: "Audit Log",
-      requiredActions: ["read"],
+      requiredActions: [""],
+    },
+    {
+      title: "───────────────────",
+      icon: undefined,
+      href: "",
+      module: "",
+      requiredActions: [""],
     },
     {
       title: "Raw Materials",
-      icon: PackageIcon,
       href: "/raw-materials",
+      icon: PackageIcon,
       module: "Raw Materials",
       requiredActions: ["read"],
+    },
+    {
+      title: "Recipes",
+      icon: ChefHat,
+      module: "Raw Materials",
+      requiredActions: ["read"],
+      children: [
+        {
+          title: "Recipes",
+          href: "/recipes",
+          icon: ChefHat,
+          module: "Raw Materials",
+          requiredActions: ["read"],
+        },
+        {
+          title: "Add Recipe",
+          href: "/recipes/add",
+          icon: PlusIcon,
+          module: "Raw Materials",
+          requiredActions: ["write"],
+        },
+      ],
+    },
+    {
+      title: "Production",
+      icon: Factory,
+      module: "Raw Materials",
+      requiredActions: ["read"],
+      children: [
+        {
+          title: "Production History",
+          href: "/production",
+          icon: EyeIcon,
+          module: "Raw Materials",
+          requiredActions: ["read"],
+        },
+        {
+          title: "New Production",
+          href: "/production/add",
+          icon: PlusIcon,
+          module: "Raw Materials",
+          requiredActions: ["write"],
+        },
+      ],
     },
     {
       title: "Suppliers",
@@ -349,7 +410,7 @@ const Sidebar: React.FC = () => {
               className={cn(
                 "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50",
                 (isActive(item.href) || hasActiveChild) &&
-                  "bg-accent/50 text-accent-foreground"
+                "bg-accent/50 text-accent-foreground"
               )}
             >
               <div className="flex items-center gap-3 relative">
@@ -376,7 +437,7 @@ const Sidebar: React.FC = () => {
                       className={cn(
                         "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-accent/50 relative",
                         isActive(child.href) &&
-                          "bg-accent/50 text-accent-foreground"
+                        "bg-accent/50 text-accent-foreground"
                       )}
                       onClick={() => setIsMobileOpen(false)}
                     >
@@ -495,7 +556,7 @@ const Sidebar: React.FC = () => {
             <Button
               variant="ghost"
               className="w-full flex items-center justify-start"
-              onClick={() => {}}
+              onClick={() => { }}
             >
               <LogOut className="h-4 w-4 mr-2" />
               <span>Log out</span>

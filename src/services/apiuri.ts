@@ -10,6 +10,7 @@ export const API_URL = {
     register: "/auth/register",
     logout: "/auth/logout",
     refresh: "/auth/refresh",
+    userPerms: "/auth/user-perms",
   },
   ping: {
     user: "/ping/user",
@@ -123,14 +124,6 @@ export const API_URL = {
     verifyPayment: "/payments/verify",
     getPaymentDetails: "/payments",
   },
-  // Raw Material Management APIs
-  rawMaterialCategories: {
-    create: "/raw-material-categories",
-    getAll: "/raw-material-categories",
-    getById: (id: string) => `/raw-material-categories/${id}`,
-    update: (id: string) => `/raw-material-categories/${id}`,
-    delete: (id: string) => `/raw-material-categories/${id}`,
-  },
   suppliers: {
     create: "/suppliers",
     getAll: "/suppliers",
@@ -146,9 +139,25 @@ export const API_URL = {
     delete: (id: string) => `/raw-materials/${id}`,
   },
   rawMaterialInventory: {
-    create: "/raw-material-inventory",
     getAll: "/raw-material-inventory",
+    getLowStock: "/raw-material-inventory/low-stock",
+    getById: (id: string) => `/raw-material-inventory/${id}`,
+    initialize: "/raw-material-inventory",
     update: (id: string) => `/raw-material-inventory/${id}`,
-    delete: (id: string) => `/raw-material-inventory/${id}`,
+  },
+  recipes: {
+    create: "/recipes",
+    getAll: "/recipes",
+    getByProduct: (productId: string) => `/recipes/product/${productId}`,
+    getById: (id: string) => `/recipes/${id}`,
+    update: (id: string) => `/recipes/${id}`,
+    delete: (id: string) => `/recipes/${id}`,
+    setDefault: (id: string) => `/recipes/${id}/set-default`,
+  },
+  production: {
+    create: "/production",
+    getAll: "/production",
+    getById: (id: string) => `/production/${id}`,
+    getByProduct: (productId: string) => `/production/product/${productId}`,
   },
 };

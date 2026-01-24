@@ -188,6 +188,20 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       handleLiveUpdate(data, 'lowStock');
     };
 
+    // Handle raw material low stock alerts
+    const handleRawMaterialLowStockAlert = (data: any) => {
+      handleLiveUpdate(data, 'RAW_MATERIAL_LOW_STOCK');
+      // Show toast notification
+      toast({
+        title: "Raw Material Low Stock",
+        text: data?.rawMaterialName 
+          ? `${data.rawMaterialName} is running low (${data.currentStock} ${data.unit} remaining)`
+          : "A raw material is running low on stock",
+        type: "warning",
+        duration: 5000,
+      });
+    };
+
     // Handle chat notifications
     const handleChatMessage = (data: any) => {
       handleLiveUpdate(data, 'CHAT_MESSAGE');
@@ -257,6 +271,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     wsService.on('shop:update', handleShopUpdate);
     wsService.on('dashboard:update', handleDashboardUpdate);
     wsService.on('low_stock:alert', handleLowStockAlert);
+    wsService.on('raw_material:low_stock', handleRawMaterialLowStockAlert);
     wsService.on('chat:message:new', handleChatMessage);
     wsService.on('chat_request_assigned', handleChatRequest);
     wsService.on('chat_request_status_updated', handleChatRequest);
@@ -302,6 +317,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       wsService.off('shop:update', handleShopUpdate);
       wsService.off('dashboard:update', handleDashboardUpdate);
       wsService.off('low_stock:alert', handleLowStockAlert);
+      wsService.off('raw_material:low_stock', handleRawMaterialLowStockAlert);
       wsService.off('chat:message:new', handleChatMessage);
       wsService.off('chat_request_assigned', handleChatRequest);
       wsService.off('chat_request_status_updated', handleChatRequest);

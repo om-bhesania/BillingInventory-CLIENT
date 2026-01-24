@@ -61,3 +61,22 @@ export const logoutUser = async (): Promise<{ message: string }> => {
   });
   return response;
 };
+
+// User permissions response interface
+export interface UserPermsResponse {
+  status: string;
+  permissions: {
+    module: string;
+    actions: string[];
+  }[];
+  role: string;
+}
+
+// Get user permissions - called on page refresh to sync permissions
+export const getUserPerms = async (): Promise<UserPermsResponse> => {
+  const response = await service<UserPermsResponse>({
+    url: API_URL.auth.userPerms,
+    method: "GET",
+  });
+  return response;
+};

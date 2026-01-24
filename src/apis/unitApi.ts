@@ -1,43 +1,43 @@
 import { service } from "@/services/service";
 
-// Raw Materials
-export const addRawMaterials = async (data: any) => {
+// Units
+export const addUnits = async (data: any) => {
     const response = await service({
-        url: "/raw-materials",
+        url: "/units",
         method: "post",
         data: data,
     });
     return response;
 };
 
-export const getRawMaterials = async () => {
+export const getUnits = async () => {
     const response = await service({
-        url: "/raw-materials",
+        url: "/units",
         method: "get",
     });
     return response;
 };
 
-export const getRawMaterialById = async (id: string) => {
+export const getUnitById = async (id: string) => {
     const response = await service({
-        url: `/raw-materials/${id}`,
+        url: `/units/${id}`,
         method: "get",
     });
     return response;
 };
 
-export const updateRawMaterial = async (id: string, data: any) => {
+export const updateUnit = async (id: string, data: any) => {
     const response = await service({
-        url: `/raw-materials/${id}`,
+        url: `/units/${id}`,
         method: "put",
         data: data,
     });
     return response;
 };
 
-export const deleteRawMaterial = async (id: string) => {
+export const deleteUnit = async (id: string) => {
     const response = await service({
-        url: `/raw-materials/${id}`,
+        url: `/units/${id}`,
         method: "delete",
     });
     return response;

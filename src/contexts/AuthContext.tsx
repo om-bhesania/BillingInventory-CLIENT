@@ -363,15 +363,16 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(user);
       setIsAuthenticated(true);
 
-      logger.auth.login(`Login successful for ${user.name}`, {
-        userId: user.id,
-        role: user.role,
+      logger.auth.login(`Login successful for ${user?.name}`, {
+        userId: user?.id,
+        role: user?.role,
       });
+      console.log("user", user);
 
       Swal.fire({
         icon: "success",
         title: "Login Successful",
-        text: `Welcome back, ${user.name}!`,
+        text: `Welcome back, ${user?.name}!`,
         toast: true,
         position: "top-end",
         showConfirmButton: false,

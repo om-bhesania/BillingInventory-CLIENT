@@ -80,6 +80,11 @@ export const RealtimeDataProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setLowStockAlerts(prev => [data, ...prev.slice(0, 49)]);
     };
 
+    // Raw material low stock alerts
+    const handleRawMaterialLowStockAlert = (data: any) => {
+      setLowStockAlerts(prev => [data, ...prev.slice(0, 49)]);
+    };
+
     // System health
     const handleSystemHealth = (data: any) => {
       setSystemHealth(data);
@@ -94,6 +99,7 @@ export const RealtimeDataProvider: React.FC<{ children: React.ReactNode }> = ({ 
     wsService.on('shop:update', handleShopUpdate);
     wsService.on('dashboard:update', handleDashboardUpdate);
     wsService.on('low_stock:alert', handleLowStockAlert);
+    wsService.on('raw_material:low_stock', handleRawMaterialLowStockAlert);
     wsService.on('system:health', handleSystemHealth);
 
     // Initial connection status
@@ -111,6 +117,7 @@ export const RealtimeDataProvider: React.FC<{ children: React.ReactNode }> = ({ 
       wsService.off('shop:update', handleShopUpdate);
       wsService.off('dashboard:update', handleDashboardUpdate);
       wsService.off('low_stock:alert', handleLowStockAlert);
+      wsService.off('raw_material:low_stock', handleRawMaterialLowStockAlert);
       wsService.off('system:health', handleSystemHealth);
     };
   }, []);

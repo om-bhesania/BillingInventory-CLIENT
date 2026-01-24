@@ -34,8 +34,13 @@ import {
   EnhancedDatePickerDemo
 } from "./pages/lazy";
 
-// Import new raw material pages
-import RawMaterialManagement from "./pages/RawMaterialManagement";
+// Import raw material pages
+import RawMaterials from "./pages/RawMaterials/RawMaterials";
+import RawMaterialForm from "./pages/RawMaterials/RawMaterialForm";
+import RecipeList from "./pages/Recipes/RecipeList";
+import RecipeForm from "./pages/Recipes/RecipeForm";
+import ProductionBatchList from "./pages/Production/ProductionBatchList";
+import ProductionBatchForm from "./pages/Production/ProductionBatchForm";
 import Suppliers from "./pages/Suppliers";
 
  
@@ -301,9 +306,55 @@ const AppRoutes: React.FC = () => {
     // Raw Material Management Routes
     {
       path: "/raw-materials",
-      element: <RawMaterialManagement />,
+      element: <RawMaterials />,
       permissions: [{ module: "Raw Materials", action: "read" }],
     },
+    {
+      path: "/raw-materials/edit/:id",
+      element: <RawMaterialForm />,
+      permissions: [
+        { module: "Raw Materials", action: "read" },
+        { module: "Raw Materials", action: "update" },
+      ],
+      requireAll: true,
+    },
+    // Recipe Management Routes
+    {
+      path: "/recipes",
+      element: <RecipeList />,
+      permissions: [{ module: "Raw Materials", action: "read" }],
+    },
+    {
+      path: "/recipes/add",
+      element: <RecipeForm />,
+      permissions: [{ module: "Raw Materials", action: "write" }],
+    },
+    {
+      path: "/recipes/edit/:id",
+      element: <RecipeForm />,
+      permissions: [
+        { module: "Raw Materials", action: "read" },
+        { module: "Raw Materials", action: "update" },
+      ],
+      requireAll: true,
+    },
+    // Production Management Routes
+    {
+      path: "/production",
+      element: <ProductionBatchList />,
+      permissions: [{ module: "Raw Materials", action: "read" }],
+    },
+    {
+      path: "/production/add",
+      element: <ProductionBatchForm />,
+      permissions: [{ module: "Raw Materials", action: "write" }],
+    },
+    {
+      path: "/production/:id",
+      element: <ProductionBatchForm />,
+      permissions: [{ module: "Raw Materials", action: "read" }],
+    },
+    // Suppliers Route
     {
       path: "/suppliers",
       element: <Suppliers />,

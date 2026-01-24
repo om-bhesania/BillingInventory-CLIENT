@@ -19,6 +19,8 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import useToast from "@/hooks/use-toast";
 import { useFormik } from "formik";
 import { useEffect, useState } from "react";
@@ -28,7 +30,10 @@ import CategoriesSelect from "./components/CategoriesSelect";
 import FlavorSelect from "./components/FlavourSelect";
 import PackagingTypeSelect from "./components/PackagingTypeSelect";
 import { getPackagingTypes, addPackagingType } from "@/apis/packagingTypeApi";
+import { getRecipesByProduct } from "@/apis/recipeApi";
+import { createProductionBatch } from "@/apis/productionApi";
 import LoadingSpinner from "@/components/ui/Loader";
+import { ChefHat, CheckCircle } from "lucide-react";
 
 const packagingTypes = [
   { value: "cup", label: "Cup" },
@@ -53,6 +58,11 @@ const InventoryForm = () => {
   const [categories, setCategories] = useState([]);
   const [packagingTypesList, setPackagingTypesList] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(isEditing);
+  const [recipes, setRecipes] = useState<any[]>([]);
+  const [autoDeductEnabled, setAutoDeductEnabled] = useState(false);
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string>("");
+  const [availabilityCheck, setAvailabilityCheck] = useState<any[]>([]);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
   const { toast } = useToast();
   // Form validation schema using Yup (refined messages)
   const validationSchema = Yup.object({
@@ -149,8 +159,9 @@ const InventoryForm = () => {
           delete formData.packagingTypeId;
         }
 
+        let productId: string;
         if (isEditing) {
-          const productId = id.replace("id=", "");
+          productId = id.replace("id=", "");
           // In edit mode, we might want to handle the SKU differently
           const data = {
             ...formData,
@@ -164,6 +175,7 @@ const InventoryForm = () => {
           });
         } else {
           response = await addProduct(formData);
+          productId = response?.id || response?.data?.id;
           formik.resetForm();
           toast({
             title: "Success",
@@ -173,6 +185,32 @@ const InventoryForm = () => {
         }
 
         console.log("Product operation successful:", response);
+
+        // Check for recipes and handle auto-deduction if enabled
+        if (productId && formData.totalStock > 0 && autoDeductEnabled && selectedRecipeId) {
+          try {
+            await createProductionBatch({
+              productId,
+              recipeId: selectedRecipeId,
+              quantity: Number(formData.totalStock),
+              notes: `Auto-created from product ${isEditing ? 'update' : 'creation'}`,
+            });
+            toast({
+              title: "Success",
+              text: "Production batch created and raw materials deducted automatically",
+              type: "success",
+            });
+          } catch (prodError: any) {
+            console.error("Error creating production batch:", prodError);
+            if (prodError?.response?.data?.error === "Insufficient raw materials") {
+              toast({
+                title: "Warning",
+                text: "Product created but raw materials could not be deducted. Please check inventory.",
+                type: "error",
+              });
+            }
+          }
+        }
 
         // Optional: Navigate back to inventory list after success
         // navigate("/inventory");
@@ -715,6 +753,64 @@ const InventoryForm = () => {
                   Active Product
                 </Label>
               </div>
+
+              {/* Recipe Auto-Deduction Section */}
+              {recipes.length > 0 && Number(formik.values.totalStock) > 0 && (
+                <div className="space-y-4 p-4 border rounded-lg bg-blue-50">
+                  <div className="flex items-center gap-2">
+                    <ChefHat className="h-5 w-5 text-blue-600" />
+                    <h3 className="font-semibold text-blue-900">Recipe & Auto-Deduction</h3>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    This product has {recipes.length} recipe{recipes.length > 1 ? 's' : ''}. 
+                    You can automatically deduct raw materials when creating inventory.
+                  </p>
+                  
+                  {recipes.length > 1 && (
+                    <div className="space-y-2">
+                      <Label>Select Recipe</Label>
+                      <Select
+                        value={selectedRecipeId}
+                        onValueChange={setSelectedRecipeId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select recipe" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {recipes.map((recipe: any) => (
+                            <SelectItem key={recipe.id} value={recipe.id}>
+                              {recipe.name || "Default Recipe"}
+                              {recipe.isDefault && " (Default)"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="autoDeduct"
+                      checked={autoDeductEnabled}
+                      onCheckedChange={setAutoDeductEnabled}
+                      disabled={!selectedRecipeId}
+                    />
+                    <Label htmlFor="autoDeduct" className="text-sm font-medium">
+                      Auto-deduct raw materials on save
+                    </Label>
+                  </div>
+
+                  {autoDeductEnabled && selectedRecipeId && (
+                    <Alert>
+                      <CheckCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Raw materials will be automatically deducted when you save this product.
+                        Production quantity: {formik.values.totalStock} units
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end section-card">

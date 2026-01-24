@@ -256,6 +256,7 @@ class WebSocketServiceImpl implements WebSocketService {
       'shop:update',
       'dashboard:update',
       'low_stock:alert',
+      'raw_material:low_stock',
       'form:sync',
       'edit:user:start',
       'edit:user:stop',

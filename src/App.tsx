@@ -77,20 +77,20 @@ const App = () => {
         <Sonner />
         <Toaster />
         <BrowserRouter>
-                 <AuthProvider>
-                   <NotificationsProvider>
-                     <LoadingProvider>
-                       <RealtimeDataProvider>
-                         <ApiActivityProvider>
-                           <TopLoader />
-                           <ConnectionStatusBar />
-                           <AppContent />
-                           <ConditionalFloatingChat />
-                         </ApiActivityProvider>
-                       </RealtimeDataProvider>
-                     </LoadingProvider>
-                   </NotificationsProvider>
-                 </AuthProvider>
+          <AuthProvider>
+            <NotificationsProvider>
+              <LoadingProvider>
+                <RealtimeDataProvider>
+                  <ApiActivityProvider>
+                    <TopLoader />
+                    <ConnectionStatusBar />
+                    <AppContent />
+                    <ConditionalFloatingChat />
+                  </ApiActivityProvider>
+                </RealtimeDataProvider>
+              </LoadingProvider>
+            </NotificationsProvider>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
