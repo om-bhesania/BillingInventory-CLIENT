@@ -1,8 +1,5 @@
 const baseUrl =
-  import.meta.env.VITE_API_URL ||
-  "http://localhost:5000" ||
-  "https://s3l06km6-5000.inc1.devtunnels.ms/api";
-
+  "https://kt43kr00-5001.inc1.devtunnels.ms/"
 export const API_URL = {
   base: baseUrl,
   auth: {

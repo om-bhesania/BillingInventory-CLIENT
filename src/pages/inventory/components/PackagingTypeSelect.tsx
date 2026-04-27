@@ -58,8 +58,9 @@ const PackagingTypeSelect = ({
         <Select
           value={formik.values.packagingTypeId}
           onValueChange={(value) => {
+            formik.setFieldTouched("packagingTypeId", true, false);
             if (value === "add-new") setShowNewInput(true);
-            else formik.setFieldValue("packagingTypeId", value);
+            else formik.setFieldValue("packagingTypeId", value, true);
           }}
         >
           <SelectTrigger id="packagingTypeId" disabled={isSubmitting}>

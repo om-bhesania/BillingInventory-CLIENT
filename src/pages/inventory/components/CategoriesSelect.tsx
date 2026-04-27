@@ -78,10 +78,11 @@ const CategoriesSelect = ({
         <Select
           value={formik.values.categoryId}
           onValueChange={(value) => {
+            formik.setFieldTouched("categoryId", true, false);
             if (value === "add-new") {
               setShowNewCategoryInput(true);
             } else {
-              formik.setFieldValue("categoryId", value);
+              formik.setFieldValue("categoryId", value, true);
             }
           }}
         >

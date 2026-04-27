@@ -6,6 +6,7 @@ export interface Product {
   name: string;
   sku: string;
   unitPrice: number;
+  costPrice?: number;
   minStockLevel?: number;
   totalStock?: number;
   isActive: boolean;

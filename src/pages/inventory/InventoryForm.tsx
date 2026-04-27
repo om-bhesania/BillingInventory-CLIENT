@@ -53,6 +53,7 @@ const InventoryForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = !!id;
+  const productId = id ? decodeURIComponent(id).replace(/^id=/, "") : "";
   const [IsdataLoading, setIsdataLoading] = useState(false);
   const [flavours, setFlavours] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -77,7 +78,7 @@ const InventoryForm = () => {
       .required("Product name is required"),
     description: Yup.string().max(500, "Keep description under 500 characters"),
     categoryId: Yup.string().required("Category is required"),
-    packagingType: Yup.string().nullable(),
+    packagingTypeId: Yup.string().nullable().optional(),
     quantityInLiters: Yup.number()
       .typeError("Enter a valid number")
       .positive("Must be positive")
@@ -93,17 +94,38 @@ const InventoryForm = () => {
       .typeError("Enter a valid price")
       .min(0, "Must be zero or positive")
       .max(1000000, "Price seems unusually high")
-      .required("Unit price is required"),
+      .required("Unit price is required")
+      .test('price-comparison', 'Unit price should be greater than or equal to retail price', function(value) {
+        const { retailPrice } = this.parent;
+        if (value && retailPrice) {
+          return Number(value) >= Number(retailPrice);
+        }
+        return true;
+      }),
     costPrice: Yup.number()
       .typeError("Enter a valid cost price")
       .min(0, "Must be zero or positive")
       .max(1000000, "Cost price seems unusually high")
-      .required("Cost price is required"),
+      .required("Cost price is required")
+      .test('cost-comparison', 'Cost price should be less than or equal to retail price', function(value) {
+        const { retailPrice } = this.parent;
+        if (value && retailPrice) {
+          return Number(value) <= Number(retailPrice);
+        }
+        return true;
+      }),
     retailPrice: Yup.number()
       .typeError("Enter a valid retail price")
       .min(0, "Must be zero or positive")
       .max(1000000, "Retail price seems unusually high")
-      .required("Retail price is required"),
+      .required("Retail price is required")
+      .test('retail-comparison', 'Retail price should be between cost price and unit price', function(value) {
+        const { costPrice, unitPrice } = this.parent;
+        if (value && costPrice && unitPrice) {
+          return Number(value) >= Number(costPrice) && Number(value) <= Number(unitPrice);
+        }
+        return true;
+      }),
     totalStock: Yup.number()
       .typeError("Enter a whole number")
       .integer("Must be a whole number")
@@ -112,9 +134,20 @@ const InventoryForm = () => {
     minStockLevel: Yup.number()
       .typeError("Enter a whole number")
       .integer("Must be a whole number")
-      .min(0, "Cannot be negative"),
+      .min(0, "Cannot be negative")
+      .test('min-stock-comparison', 'Min stock level should be less than total stock', function(value) {
+        const { totalStock } = this.parent;
+        if (value && totalStock) {
+          return Number(value) <= Number(totalStock);
+        }
+        return true;
+      }),
     barcode: Yup.string().max(64, "Barcode too long"),
-    imageUrl: Yup.string().url("Must be a valid URL"),
+    imageUrl: Yup.string()
+      .transform((value) => (value === "" ? null : value))
+      .url("Must be a valid URL")
+      .nullable()
+      .notRequired(),
     isActive: Yup.boolean(),
     flavorId: Yup.string().required("Flavor is required"),
   });
@@ -125,7 +158,6 @@ const InventoryForm = () => {
     name: "",
     description: "",
     categoryId: "",
-    packagingType: "",
     quantityInLiters: "",
     unitSize: "",
     unitMeasurement: "",
@@ -145,29 +177,46 @@ const InventoryForm = () => {
   const formik = useFormik({
     initialValues,
     validationSchema,
-    enableReinitialize: true, // This will cause formik to reset when initialValues change
+    enableReinitialize: true,
+    validateOnChange: true,
+    validateOnBlur: true,
     onSubmit: async (values) => {
-       console.log("values", values);
+       console.log("Form values before submit:", values);
       try {
         setIsdataLoading(true);
-        console.log("values", values);
         let response;
-        const formData = { ...values } as any;
+        
+        // Sanitize and prepare form data
+        const formData: any = {
+          sku: values.sku?.trim(),
+          name: values.name?.trim(),
+          description: values.description?.trim() || null,
+          categoryId: values.categoryId,
+          flavorId: values.flavorId,
+          packagingTypeId: values.packagingTypeId || null,
+          quantityInLiters: Number(values.quantityInLiters),
+          unitSize: Number(values.unitSize),
+          unitMeasurement: values.unitMeasurement,
+          unitPrice: Number(values.unitPrice),
+          costPrice: Number(values.costPrice),
+          retailPrice: Number(values.retailPrice),
+          totalStock: Number(values.totalStock),
+          minStockLevel: values.minStockLevel ? Number(values.minStockLevel) : null,
+          barcode: values.barcode?.trim() || null,
+          imageUrl: values.imageUrl?.trim() || null,
+          isActive: values.isActive,
+        };
 
-        // Guard against invalid foreign keys leaking into submission
+        // Remove null packagingTypeId if not provided
         if (!formData.packagingTypeId) {
           delete formData.packagingTypeId;
         }
 
+        console.log("Sanitized form data:", formData);
+
         let productId: string;
         if (isEditing) {
-          productId = id.replace("id=", "");
-          // In edit mode, we might want to handle the SKU differently
-          const data = {
-            ...formData,
-            sku: null, // Or keep the original SKU if needed
-          };
-          response = await updateProduct(data, productId);
+          response = await updateProduct(formData, productId);
           toast({
             title: "Success",
             text: "Product updated successfully",
@@ -243,10 +292,32 @@ const InventoryForm = () => {
       });
   }, []);
 
+  // Fetch recipes when product is loaded or created
+  useEffect(() => {
+    const fetchRecipes = async () => {
+      if (isEditing && productId) {
+        try {
+          const recipesData = await getRecipesByProduct(productId);
+          setRecipes(recipesData || []);
+          
+          // Auto-select first recipe or default recipe
+          if (recipesData && recipesData.length > 0) {
+            const defaultRecipe = recipesData.find((r: any) => r.isDefault);
+            setSelectedRecipeId(defaultRecipe?.id || recipesData[0].id);
+          }
+        } catch (error) {
+          console.error("Error fetching recipes:", error);
+          setRecipes([]);
+        }
+      }
+    };
+
+    fetchRecipes();
+  }, [isEditing, productId]);
+
   const fetchProductData = async () => {
     try {
       setIsLoading(true);
-      const productId = id.replace("id=", "");
       const product: any = await getProductsById(productId);
 
       if (product) {
@@ -256,7 +327,6 @@ const InventoryForm = () => {
           name: product.name || "",
           description: product.description || "",
           categoryId: product.categoryId || "",
-          packagingType: product.packagingType || "",
           quantityInLiters: product.quantityInLiters || "",
           unitSize: product.unitSize || "",
           unitMeasurement: product.unitMeasurement || "",
@@ -555,9 +625,10 @@ const InventoryForm = () => {
                   <Label htmlFor="unitMeasurement">Unit Measurement *</Label>
                   <Select
                     value={formik.values.unitMeasurement}
-                    onValueChange={(value) =>
-                      formik.setFieldValue("unitMeasurement", value)
-                    }
+                    onValueChange={(value) => {
+                      formik.setFieldTouched("unitMeasurement", true, false);
+                      formik.setFieldValue("unitMeasurement", value, true);
+                    }}
                   >
                     <SelectTrigger id="unitMeasurement">
                       <SelectValue placeholder="Select measurement" />
@@ -607,7 +678,7 @@ const InventoryForm = () => {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Maximum Retail Price (MRP) - the selling price for individual products.
+                    Maximum Retail Price (MRP) - highest price for this product.
                   </p>
                 </div>
 
@@ -627,7 +698,7 @@ const InventoryForm = () => {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Manufacturing cost per unit - what it costs to make this product.
+                    Manufacturing cost per unit - must be ≤ retail price.
                   </p>
                 </div>
 
@@ -647,10 +718,27 @@ const InventoryForm = () => {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Actual selling price to customers (usually same as MRP).
+                    Actual selling price - must be between cost and unit price.
                   </p>
                 </div>
               </div>
+
+              {/* Price relationship info */}
+              {(formik.values.costPrice || formik.values.retailPrice || formik.values.unitPrice) && (
+                <Alert className="bg-blue-50 border-blue-200">
+                  <AlertDescription>
+                    <p className="text-sm font-medium text-blue-900 mb-1">Price Relationship Guide:</p>
+                    <p className="text-xs text-blue-700">
+                      Cost Price ≤ Retail Price ≤ Unit Price (MRP)
+                    </p>
+                    {formik.values.costPrice && formik.values.retailPrice && (
+                      <p className="text-xs text-green-700 mt-1">
+                        Profit per unit: ₹{(Number(formik.values.retailPrice) - Number(formik.values.costPrice)).toFixed(2)}
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <div className="grid gap-4 sm:grid-cols-3">
 
@@ -832,6 +920,22 @@ const InventoryForm = () => {
                 </Button>
               </div>
             </div>
+
+            {/* Show validation errors summary if form has errors */}
+            {Object.keys(formik.errors).length > 0 && formik.submitCount > 0 && (
+              <Alert className="mt-4" variant="destructive">
+                <AlertDescription>
+                  <p className="font-semibold mb-2">Please fix the following errors:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {Object.entries(formik.errors).map(([field, error]) => (
+                      <li key={field} className="text-sm">
+                        {field}: {String(error)}
+                      </li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
           </div>
 
           {/* Summary card */}

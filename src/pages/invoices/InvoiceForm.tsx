@@ -32,7 +32,19 @@ interface InvoiceItem {
   name: string;
   quantity: number;
   unitPrice: number;
+  costPrice?: number;
 }
+
+interface ShopSummary {
+  id: string;
+  name: string;
+  address?: string | null;
+  contactNumber?: string | null;
+  managerId?: string | number | null;
+}
+
+const DEFAULT_RECEIPT_ADDRESS =
+  "Shree Foods private limited 30,\nDev industrial area, BIDC, Gorwa, Vadodara.";
 
 const InvoiceForm = () => {
   const { id } = useParams();
@@ -54,15 +66,17 @@ const InvoiceForm = () => {
     items: [] as InvoiceItem[],
     notes: "",
     invoiceType: "SHOP", // SHOP | FACTORY
+    discountPercentage: 0, // Discount percentage for factory invoices
   });
 
   const [isLoading, setIsLoading] = useState(false);
   const [canEditInvoiceNumber, setCanEditInvoiceNumber] = useState(false);
   const [userRole, setUserRole] = useState<RoleString>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [managedShops, setManagedShops] = useState<
-    { id: string; name: string }[]
+    ShopSummary[]
   >([]);
-  const [allShops, setAllShops] = useState<{ id: string; name: string }[]>([]);
+  const [allShops, setAllShops] = useState<ShopSummary[]>([]);
   const [inventory, setInventory] = useState<ShopInventoryItem[]>([]);
   const [allProducts, setAllProducts] = useState<any[]>([]);
 
@@ -84,9 +98,17 @@ const InvoiceForm = () => {
         setIsLoading(true);
         const ping = await pingUser();
         const role = ping.user?.role || null;
+        setCurrentUserId(String(ping.user?.id ?? ""));
         setUserRole(role);
         const userManaged = ping.user?.managedShops || [];
-        setManagedShops(userManaged.map((s) => ({ id: s.id, name: s.name })));
+        setManagedShops(
+          userManaged.map((s) => ({
+            id: s.id,
+            name: s.name,
+            address: s.location || "",
+            contactNumber: s.contactNumber || "",
+          }))
+        );
 
         if (
           role &&
@@ -98,7 +120,13 @@ const InvoiceForm = () => {
               ? shopsResp
               : shopsResp?.shops || shopsResp?.data || []
           )
-            .map((s: any) => ({ id: s.id, name: s.name }))
+            .map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              address: s.address || s.location || "",
+              contactNumber: s.contactNumber || "",
+              managerId: s.managerId ?? s.manager?.id ?? null,
+            }))
             .filter((s: any) => s.id && s.name);
           setAllShops(shopsList);
         } else if (userManaged.length > 0) {
@@ -244,6 +272,7 @@ const InvoiceForm = () => {
                   productId: value,
                   name: selected.name,
                   unitPrice: selected.unitPrice,
+                  costPrice: selected.costPrice || 0,
                 };
               }
             }
@@ -286,8 +315,31 @@ const InvoiceForm = () => {
     return calculateCGST() + calculateSGST(); // 18% Total GST
   };
 
+  const calculateTotalCostPrice = () => {
+    // Only for factory invoices - sum up the cost price * quantity for all items
+    if (formData.invoiceType !== "FACTORY") return 0;
+    return formData.items.reduce(
+      (total, item) => total + (item.costPrice || 0) * (item.quantity || 0),
+      0
+    );
+  };
+
+  const calculateDiscount = () => {
+    // Only for factory invoices with discount percentage
+    if (formData.invoiceType !== "FACTORY" || !formData.discountPercentage) return 0;
+    
+    const totalCostPrice = calculateTotalCostPrice();
+    const discountDecimal = formData.discountPercentage / 100;
+    
+    // Apply discount twice: first on cost price, then on the result
+    // Formula: (discount%)² * totalCostPrice
+    const discount = discountDecimal * discountDecimal * totalCostPrice;
+    
+    return discount;
+  };
+
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTotalTax();
+    return calculateSubtotal() + calculateTotalTax() - calculateDiscount();
   };
 
   const isValidIndianPhone = (val: string) => {
@@ -354,7 +406,7 @@ const InvoiceForm = () => {
         })),
         subtotal: Number(calculateSubtotal().toFixed(2)),
         tax: Number(calculateTotalTax().toFixed(2)),
-        discount: 0,
+        discount: Number(calculateDiscount().toFixed(2)),
         total: Number(calculateTotal().toFixed(2)),
       };
       const billing = await createBilling(payload as any);
@@ -371,6 +423,50 @@ const InvoiceForm = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const getSelectedShopDetails = () => {
+    if (formData.invoiceType !== "SHOP") return null;
+    const selected = (
+      allShops.find((shop) => shop.id === formData.shopId) ||
+      managedShops.find((shop) => shop.id === formData.shopId) ||
+      managedShops[0] ||
+      null
+    );
+    if (!selected) return null;
+
+    // Prefer shop details that belong to the logged-in manager/user id.
+    const managerMatchedShop =
+      allShops.find(
+        (shop) =>
+          shop.id === selected.id &&
+          String(shop.managerId ?? "") === String(currentUserId || "")
+      ) ||
+      allShops.find(
+        (shop) =>
+          String(shop.managerId ?? "") === String(currentUserId || "") &&
+          shop.address
+      );
+
+    return managerMatchedShop || selected;
+  };
+
+  const handlePrintReceipt = () => {
+    const selectedShop = getSelectedShopDetails();
+    printInvoice({
+      ...formData,
+      customer: formData.customerName,
+      contactNumber: formData.customerContact,
+      shop: selectedShop?.name || "Blizz",
+      shopName: selectedShop?.name || "Blizz",
+      shopAddress:
+        (selectedShop?.address || "").trim() || DEFAULT_RECEIPT_ADDRESS,
+      shopContact: selectedShop?.contactNumber || "",
+      items: formData.items.map((item) => ({
+        ...item,
+        price: item.unitPrice,
+      })),
+    });
   };
 
   return (
@@ -777,15 +873,56 @@ const InvoiceForm = () => {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Input
-              id="notes"
-              name="notes"
-              value={formData.notes}
-              onChange={handleChange}
-              placeholder="Add any additional notes"
-            />
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="notes">Notes</Label>
+              <Input
+                id="notes"
+                name="notes"
+                value={formData.notes}
+                onChange={handleChange}
+                placeholder="Add any additional notes"
+              />
+            </div>
+
+            {formData.invoiceType === "FACTORY" && (
+              <div>
+                <Label htmlFor="discountPercentage">
+                  Discount Percentage (%)
+                </Label>
+                <Input
+                  id="discountPercentage"
+                  name="discountPercentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={formData.discountPercentage}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      discountPercentage: parseFloat(e.target.value) || 0,
+                    })
+                  }
+                  placeholder="Enter discount percentage"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Applied twice on total cost price: {formData.discountPercentage}% of cost, then {formData.discountPercentage}% of that result
+                </p>
+                {formData.discountPercentage > 0 && (
+                  <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Total Cost Price:</span>
+                      <span>₹ {calculateTotalCostPrice().toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-blue-700 font-medium mt-1">
+                      <span>Discount Amount:</span>
+                      <span>₹ {calculateDiscount().toFixed(2)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-3">
@@ -806,6 +943,12 @@ const InvoiceForm = () => {
                 <span>Total Tax (18%):</span>
                 <span>₹ {calculateTotalTax().toFixed(2)}</span>
               </div>
+              {formData.invoiceType === "FACTORY" && calculateDiscount() > 0 && (
+                <div className="flex items-center justify-between text-green-600 font-medium">
+                  <span>Discount:</span>
+                  <span>- ₹ {calculateDiscount().toFixed(2)}</span>
+                </div>
+              )}
             </div>
             <Separator />
             <div className="flex items-center justify-between text-xl font-bold">
@@ -822,9 +965,9 @@ const InvoiceForm = () => {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => printInvoice(formData)}
+            onClick={handlePrintReceipt}
           >
-            <Printer className="h-4 w-4 mr-2" /> Print
+            <Printer className="h-4 w-4 mr-2" /> Print Receipt (3")
           </Button>
           <Button
             type="button"
