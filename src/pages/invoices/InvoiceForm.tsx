@@ -43,6 +43,18 @@ interface ShopSummary {
   managerId?: string | number | null;
 }
 
+const sortShopsWithBlizzOnTop = (shops: ShopSummary[]): ShopSummary[] => {
+  return [...shops].sort((a, b) => {
+    const aIsBlizz = a.name?.trim().toLowerCase() === "blizz";
+    const bIsBlizz = b.name?.trim().toLowerCase() === "blizz";
+
+    if (aIsBlizz && !bIsBlizz) return -1;
+    if (!aIsBlizz && bIsBlizz) return 1;
+
+    return a.name.localeCompare(b.name);
+  });
+};
+
 const DEFAULT_RECEIPT_ADDRESS =
   "Shree Foods private limited 30,\nDev industrial area, BIDC, Gorwa, Vadodara.";
 
@@ -102,12 +114,14 @@ const InvoiceForm = () => {
         setUserRole(role);
         const userManaged = ping.user?.managedShops || [];
         setManagedShops(
-          userManaged.map((s) => ({
-            id: s.id,
-            name: s.name,
-            address: s.location || "",
-            contactNumber: s.contactNumber || "",
-          }))
+          sortShopsWithBlizzOnTop(
+            userManaged.map((s) => ({
+              id: s.id,
+              name: s.name,
+              address: s.location || "",
+              contactNumber: s.contactNumber || "",
+            }))
+          )
         );
 
         if (
@@ -128,7 +142,7 @@ const InvoiceForm = () => {
               managerId: s.managerId ?? s.manager?.id ?? null,
             }))
             .filter((s: any) => s.id && s.name);
-          setAllShops(shopsList);
+          setAllShops(sortShopsWithBlizzOnTop(shopsList));
         } else if (userManaged.length > 0) {
           const defaultShopId = userManaged[0].id;
           setFormData((prev) => ({ ...prev, shopId: defaultShopId }));
