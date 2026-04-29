@@ -57,6 +57,11 @@ const PackagingTypeSelect = ({
       {!showNewInput ? (
         <Select
           value={formik.values.packagingTypeId}
+          onOpenChange={(open) => {
+            if (!open) {
+              formik.setFieldTouched("packagingTypeId", true, true);
+            }
+          }}
           onValueChange={(value) => {
             formik.setFieldTouched("packagingTypeId", true, false);
             if (value === "add-new") setShowNewInput(true);

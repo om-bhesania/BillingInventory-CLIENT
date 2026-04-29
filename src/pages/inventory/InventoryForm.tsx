@@ -106,7 +106,8 @@ const InventoryForm = () => {
       .typeError("Enter a valid cost price")
       .min(0, "Must be zero or positive")
       .max(1000000, "Cost price seems unusually high")
-      .required("Cost price is required")
+      .nullable()
+      .notRequired()
       .test('cost-comparison', 'Cost price should be less than or equal to retail price', function(value) {
         const { retailPrice } = this.parent;
         if (value && retailPrice) {
@@ -118,7 +119,8 @@ const InventoryForm = () => {
       .typeError("Enter a valid retail price")
       .min(0, "Must be zero or positive")
       .max(1000000, "Retail price seems unusually high")
-      .required("Retail price is required")
+      .nullable()
+      .notRequired()
       .test('retail-comparison', 'Retail price should be between cost price and unit price', function(value) {
         const { costPrice, unitPrice } = this.parent;
         if (value && costPrice && unitPrice) {
@@ -214,7 +216,7 @@ const InventoryForm = () => {
 
         console.log("Sanitized form data:", formData);
 
-        let productId: string;
+        let savedProductId: string;
         if (isEditing) {
           response = await updateProduct(formData, productId);
           toast({
@@ -224,7 +226,7 @@ const InventoryForm = () => {
           });
         } else {
           response = await addProduct(formData);
-          productId = response?.id || response?.data?.id;
+          savedProductId = response?.id || response?.data?.id;
           formik.resetForm();
           toast({
             title: "Success",
@@ -236,10 +238,10 @@ const InventoryForm = () => {
         console.log("Product operation successful:", response);
 
         // Check for recipes and handle auto-deduction if enabled
-        if (productId && formData.totalStock > 0 && autoDeductEnabled && selectedRecipeId) {
+        if (savedProductId && formData.totalStock > 0 && autoDeductEnabled && selectedRecipeId) {
           try {
             await createProductionBatch({
-              productId,
+              productId: savedProductId,
               recipeId: selectedRecipeId,
               quantity: Number(formData.totalStock),
               notes: `Auto-created from product ${isEditing ? 'update' : 'creation'}`,
@@ -525,6 +527,11 @@ const InventoryForm = () => {
                     addCategories={addCategories}
                     fetchCategories={fetchCategories}
                   />
+                  {formik.touched.categoryId && formik.errors.categoryId && (
+                    <p className="text-sm text-red-500">
+                      {formik.errors.categoryId}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Grouping like "Ice Cream", "Toppings", etc.
                   </p>
@@ -538,6 +545,11 @@ const InventoryForm = () => {
                     addFlavours={addFlavours}
                     fetchFlavours={fetchFlavours}
                   />
+                  {formik.touched.flavorId && formik.errors.flavorId && (
+                    <p className="text-sm text-red-500">
+                      {formik.errors.flavorId}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Choose the flavor profile customers will see.
                   </p>

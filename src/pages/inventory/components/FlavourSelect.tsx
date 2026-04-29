@@ -67,6 +67,11 @@ const FlavorSelect = ({ formik, flavours, addFlavours, fetchFlavours }) => {
       {!showNewFlavorInput ? (
         <Select
           value={formik.values.flavorId}
+          onOpenChange={(open) => {
+            if (!open) {
+              formik.setFieldTouched("flavorId", true, true);
+            }
+          }}
           onValueChange={(value) => {
             formik.setFieldTouched("flavorId", true, false);
             if (value === "add-new") {
