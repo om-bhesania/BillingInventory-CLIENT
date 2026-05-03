@@ -14,7 +14,11 @@ interface CommonTableProps<T extends object> {
   options?: Partial<MRT_TableOptions<T>>;
 }
 
-function MaterialTable<T extends object>({ columns, data }: CommonTableProps<T>) {
+function MaterialTable<T extends object>({
+  columns,
+  data,
+  options,
+}: CommonTableProps<T>) {
   const table = useMaterialReactTable({
     columns,
     data: data || [], // Ensure data is never undefined
@@ -87,6 +91,7 @@ function MaterialTable<T extends object>({ columns, data }: CommonTableProps<T>)
         id: false, // Hide the ID column by default
       },
     },
+    ...(options || {}),
   });
   return <MaterialReactTable table={table} />;
 }
