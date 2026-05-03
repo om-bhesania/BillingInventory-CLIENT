@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { service } from "@/services/service";
 import { API_URL } from "@/services/apiuri";
 import { getWebSocketService } from "@/services/websocketService";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,19 +30,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Trash2,
   Eye,
   Edit,
   Search,
-  Filter,
   SortAsc,
   SortDesc,
   EyeOff,
-  CheckCircle,
-  X,
+  ListChecks,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -207,6 +211,38 @@ function sortDisplayRows(
   });
 }
 
+function displayRowKey(row: DisplayRow): string {
+  return row.type === "batch"
+    ? `batch:${row.batchId}`
+    : `single:${row.request.id}`;
+}
+
+function collectRequestsForSelectedRows(
+  rows: DisplayRow[],
+  selectedKeys: string[]
+): RestockRequest[] {
+  const keySet = new Set(selectedKeys);
+  const out: RestockRequest[] = [];
+  for (const row of rows) {
+    if (!keySet.has(displayRowKey(row))) continue;
+    if (row.type === "batch") out.push(...row.requests);
+    else out.push(row.request);
+  }
+  return out;
+}
+
+/** Matches server `updateRestockRequestStatus` allowed values */
+const BULK_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: "waiting_for_approval", label: "Waiting for approval" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "approved_pending", label: "Approved (pending fulfillment)" },
+  { value: "in_transit", label: "In transit" },
+  { value: "fulfilled", label: "Fulfilled" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
 const RestockManagement: React.FC = () => {
   const { user } = useAuth();
   const [requests, setRequests] = useState<RestockRequest[]>([]);
@@ -236,6 +272,11 @@ const RestockManagement: React.FC = () => {
     open: boolean;
     targets: RestockRequest[];
   }>({ open: false, targets: [] });
+
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkNotes, setBulkNotes] = useState("");
+  const [bulkApplying, setBulkApplying] = useState(false);
 
   // Check if user is Admin
   if (!user || user.role !== "Admin") {
@@ -271,6 +312,24 @@ const RestockManagement: React.FC = () => {
     const rows = buildDisplayRows(pool);
     setDisplayRows(sortDisplayRows(rows, sortBy, sortOrder));
   }, [requests, searchTerm, statusFilter, shopFilter, sortBy, sortOrder]);
+
+  useEffect(() => {
+    const valid = new Set(displayRows.map(displayRowKey));
+    setSelectedRowKeys((prev) => prev.filter((k) => valid.has(k)));
+  }, [displayRows]);
+
+  const bulkTargetRequests = useMemo(
+    () => collectRequestsForSelectedRows(displayRows, selectedRowKeys),
+    [displayRows, selectedRowKeys]
+  );
+
+  const allRowKeys = useMemo(
+    () => displayRows.map(displayRowKey),
+    [displayRows]
+  );
+  const allVisibleSelected =
+    allRowKeys.length > 0 &&
+    allRowKeys.every((k) => selectedRowKeys.includes(k));
 
   // WebSocket listeners for real-time updates
   useEffect(() => {
@@ -486,6 +545,7 @@ const RestockManagement: React.FC = () => {
       });
 
       closeStatusUpdateDialog();
+      setSelectedRowKeys([]);
       fetchRequests();
     } catch (error: any) {
       console.error("Error updating status:", error);
@@ -494,6 +554,83 @@ const RestockManagement: React.FC = () => {
         text: error?.response?.data?.error ?? "Update failed",
         timer: 3000,
       });
+    }
+  };
+
+  const toggleRowSelection = (key: string, checked: boolean) => {
+    setSelectedRowKeys((prev) =>
+      checked
+        ? prev.includes(key)
+          ? prev
+          : [...prev, key]
+        : prev.filter((k) => k !== key)
+    );
+  };
+
+  const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) setSelectedRowKeys([...allRowKeys]);
+    else setSelectedRowKeys([]);
+  };
+
+  const handleBulkStatusApply = async () => {
+    const targets = bulkTargetRequests;
+    if (targets.length === 0) {
+      Swal.fire({
+        icon: "info",
+        title: "Nothing selected",
+        text: "Select one or more rows in the table first.",
+      });
+      return;
+    }
+    if (!bulkStatus) {
+      Swal.fire({
+        icon: "info",
+        title: "Choose a status",
+        text: "Pick the status to apply to every selected line item.",
+      });
+      return;
+    }
+
+    const result = await Swal.fire({
+      title: "Apply bulk status?",
+      html: `Set status to <strong>${bulkStatus}</strong> for <strong>${targets.length}</strong> restock line item(s). Invalid transitions may fail partway through.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Apply",
+    });
+    if (!result.isConfirmed) return;
+
+    setBulkApplying(true);
+    try {
+      for (const req of targets) {
+        await service({
+          url: API_URL.restockRequest.updateStatus(req.id),
+          method: "PATCH",
+          data: {
+            status: bulkStatus,
+            notes: bulkNotes.trim() || undefined,
+          },
+        });
+      }
+      Swal.fire({
+        icon: "success",
+        title: "Bulk update complete",
+        text: `Updated ${targets.length} request(s) to ${bulkStatus}.`,
+      });
+      setSelectedRowKeys([]);
+      setBulkNotes("");
+      setBulkStatus("");
+      fetchRequests();
+    } catch (error: any) {
+      console.error("Bulk status error:", error);
+      Swal.fire({
+        icon: "error",
+        title: "Bulk update failed",
+        text: error?.response?.data?.error ?? "One or more updates failed.",
+      });
+      fetchRequests();
+    } finally {
+      setBulkApplying(false);
     }
   };
 
@@ -683,7 +820,92 @@ const RestockManagement: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Search, Filter, and Sort Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ListChecks className="h-5 w-5" />
+            Bulk status change
+          </CardTitle>
+          <CardDescription>
+            Select rows below, choose a status, optionally add notes, then apply
+            to every underlying line item in the selection (including all lines
+            in a grouped batch row).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-2 min-w-[200px] flex-1">
+              <Label>New status</Label>
+              <Select
+                value={bulkStatus || "__none__"}
+                onValueChange={(v) =>
+                  setBulkStatus(v === "__none__" ? "" : v)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__" disabled>
+                    Select status…
+                  </SelectItem>
+                  {BULK_STATUS_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 flex-[2] min-w-[220px]">
+              <Label htmlFor="bulk-status-notes">Notes (optional)</Label>
+              <Textarea
+                id="bulk-status-notes"
+                rows={2}
+                placeholder="Applied to each selected request…"
+                value={bulkNotes}
+                onChange={(e) => setBulkNotes(e.target.value)}
+                className="resize-none"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                onClick={handleBulkStatusApply}
+                disabled={
+                  bulkApplying ||
+                  selectedRowKeys.length === 0 ||
+                  !bulkStatus
+                }
+              >
+                {bulkApplying ? "Applying…" : "Apply to selected"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={selectedRowKeys.length === 0}
+                onClick={() => {
+                  setSelectedRowKeys([]);
+                  setBulkNotes("");
+                  setBulkStatus("");
+                }}
+              >
+                Clear selection
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+            <Badge variant="secondary">
+              {selectedRowKeys.length} row
+              {selectedRowKeys.length !== 1 ? "s" : ""} selected
+            </Badge>
+            <Badge variant="outline">
+              {bulkTargetRequests.length} line item
+              {bulkTargetRequests.length !== 1 ? "s" : ""} will update
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Requests Table */}
       <Card>
@@ -695,6 +917,22 @@ const RestockManagement: React.FC = () => {
             <table className="w-full">
               <thead>
                 <tr className="border-b">
+                  <th className="w-10 p-3">
+                    <Checkbox
+                      checked={
+                        allVisibleSelected
+                          ? true
+                          : selectedRowKeys.length > 0
+                          ? "indeterminate"
+                          : false
+                      }
+                      onCheckedChange={(state) =>
+                        toggleSelectAllVisible(state === true)
+                      }
+                      aria-label="Select all visible rows"
+                      disabled={displayRows.length === 0}
+                    />
+                  </th>
                   <th className="text-left p-3 font-medium">Type</th>
                   <th className="text-left p-3 font-medium">Product</th>
                   <th className="text-left p-3 font-medium">Shop</th>
@@ -732,11 +970,27 @@ const RestockManagement: React.FC = () => {
                     hour12: true,
                   });
 
+                  const rk = displayRowKey(row);
+                  const rowChecked = selectedRowKeys.includes(rk);
+
                   return (
                     <tr
                       key={isBatch ? `batch-${row.batchId}` : primary.id}
                       className="border-b hover:bg-gray-50"
                     >
+                      <td className="p-3 align-middle">
+                        <Checkbox
+                          checked={rowChecked}
+                          onCheckedChange={(state) =>
+                            toggleRowSelection(rk, state === true)
+                          }
+                          aria-label={
+                            isBatch
+                              ? `Select batch ${targets.length} items`
+                              : `Select ${primary.product.name}`
+                          }
+                        />
+                      </td>
                       <td className="p-3">
                         <div className="flex flex-col gap-1">
                           <Badge variant="outline">{typeLabel}</Badge>
