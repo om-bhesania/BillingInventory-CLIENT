@@ -267,11 +267,15 @@ const InventoryForm = () => {
         // navigate("/inventory");
       } catch (e) {
         console.log("error", e);
+        const backendMessage =
+          e?.response?.data?.message ||
+          e?.response?.data?.details?.cause ||
+          e?.response?.data?.details ||
+          e?.response?.data?.error ||
+          "Please wait for a moment and try again";
         toast({
           title: "Something went wrong",
-          text: `${
-            e?.response?.data?.error || "Please wait for a moment and try again"
-          }`,
+          text: `${backendMessage}`,
           type: "error",
         });
       } finally {

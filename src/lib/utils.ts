@@ -49,7 +49,7 @@ export const printInvoice = (formData: any) => {
     minute: "2-digit",
   });
 
-  const shopName = escapeHtml(formData?.shopName || formData?.shop || "Blizz");
+  const shopName = "BLIZZ";
   const shopAddress = escapeHtml(
     formData?.shopAddress || "Shop address not available"
   );

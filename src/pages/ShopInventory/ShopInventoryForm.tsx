@@ -187,6 +187,10 @@ console.log("userShopIds", pingUser);
   const watchedMinStockPerItem = watch("minStockPerItem");
   const watchedAlertsEnabled = watch("lowStockAlertsEnabled");
 
+  /** Same stock for several products — selection + one shared quantity */
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
+  const [bulkStock, setBulkStock] = useState(1);
+
   // Auto-calculate min stock as 20% of current stock, but allow 0
   const calculateMinStock = (stock: number) => {
     return Math.max(0, Math.round(stock * 0.2));
@@ -314,6 +318,56 @@ console.log("userShopIds", pingUser);
 
     // Reset form to default values
     resetForm();
+  };
+
+  const toggleBulkProduct = (productId: string, checked: boolean) => {
+    setBulkSelectedIds((prev) => {
+      if (checked) {
+        return prev.includes(productId) ? prev : [...prev, productId];
+      }
+      return prev.filter((id) => id !== productId);
+    });
+  };
+
+  const addBulkToList = () => {
+    if (bulkSelectedIds.length === 0) {
+      toast({
+        title: "Hold up! 🛑",
+        text: "Select at least one product",
+        type: "error",
+      });
+      return;
+    }
+
+    const stockAmount = Number(bulkStock) || 0;
+    if (stockAmount <= 0) {
+      toast({
+        title: "Invalid Stock! ⚠️",
+        text: "Please enter a valid stock amount greater than 0",
+        type: "error",
+      });
+      return;
+    }
+
+    const minStock = calculateMinStock(stockAmount);
+
+    const newItems: InventoryItem[] = bulkSelectedIds.map((productId) => ({
+      productId,
+      currentStock: stockAmount,
+      minStockPerItem: minStock,
+      lowStockAlertsEnabled: true,
+    }));
+
+    setInventoryItems((prev) => [...prev, ...newItems]);
+
+    toast({
+      title: "Added! 🎉",
+      text: `${newItems.length} product(s) added with stock ${stockAmount}`,
+      type: "success",
+    });
+
+    setBulkSelectedIds([]);
+    setBulkStock(1);
   };
 
   // Remove item from inventory list
@@ -599,7 +653,9 @@ console.log("userShopIds", pingUser);
                 Add New Item
               </CardTitle>
               <CardDescription>
-                Select a product and add it to your inventory list
+                Add one product at a time, or use &quot;Same quantity for
+                multiple&quot; below when several products share one stock
+                amount.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -701,6 +757,77 @@ console.log("userShopIds", pingUser);
                   Add to List
                 </Button>
               </form>
+
+              <Separator className="my-6" />
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Same quantity for multiple products
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Use when every product below should get the same stock. Min
+                    stock uses the same 20% rule as a single add with optional
+                    min left empty.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Products</Label>
+                  <div className="max-h-44 overflow-y-auto rounded-md border p-2 space-y-2">
+                    {products.length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-1 py-2">
+                        No products loaded
+                      </p>
+                    ) : (
+                      products.map((product) => (
+                        <div
+                          key={product.id}
+                          className="flex items-center gap-2 py-0.5"
+                        >
+                          <Checkbox
+                            id={`bulk-product-${product.id}`}
+                            checked={bulkSelectedIds.includes(product.id)}
+                            onCheckedChange={(state) =>
+                              toggleBulkProduct(product.id, state === true)
+                            }
+                          />
+                          <label
+                            htmlFor={`bulk-product-${product.id}`}
+                            className="text-sm leading-none cursor-pointer flex-1"
+                          >
+                            {product.name}
+                            <span className="text-muted-foreground ml-1">
+                              ({product.sku})
+                            </span>
+                          </label>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="bulkStock">Stock amount (all selected)</Label>
+                  <Input
+                    id="bulkStock"
+                    type="number"
+                    min={1}
+                    value={bulkStock}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      setBulkStock(Number.isFinite(n) ? n : 1);
+                    }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  disabled={bulkSelectedIds.length === 0}
+                  onClick={addBulkToList}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add selected to list ({bulkSelectedIds.length})
+                </Button>
+              </div>
 
               {/* Selected Product Info */}
               {selectedProduct && (
