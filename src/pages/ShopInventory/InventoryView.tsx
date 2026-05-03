@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -28,8 +37,13 @@ import {
   RefreshCw,
   TrendingUp,
   TrendingDown,
+  Table2,
 } from 'lucide-react';
-import { getShopInventory, ShopInventoryItem } from '@/apis/shopInventoryApi';
+import {
+  getShopInventory,
+  ShopInventoryItem,
+  updateShopInventoryStock,
+} from '@/apis/shopInventoryApi';
 import { getShop } from '@/apis/shopapi';
 import useToast from '@/hooks/use-toast';
 import { usePingUser } from '@/hooks/use-pingUser';
@@ -43,6 +57,30 @@ interface Shop {
 interface InventoryItem extends ShopInventoryItem {
   stockStatus: 'normal' | 'low-stock' | 'out-of-stock';
   stockTrend: 'up' | 'down' | 'stable';
+}
+
+type SheetRowDraft = {
+  id: string;
+  productName: string;
+  sku: string;
+  categoryName: string;
+  currentStock: string;
+  minStock: string;
+  lowAlerts: boolean;
+};
+
+function itemToSheetDraft(item: InventoryItem): SheetRowDraft {
+  const minVal =
+    item.minStockPerItem ?? item.product.minStockLevel ?? '';
+  return {
+    id: item.id,
+    productName: item.product.name,
+    sku: item.product.sku,
+    categoryName: item.product.category.name,
+    currentStock: String(item.currentStock ?? 0),
+    minStock: minVal === '' || minVal === undefined ? '' : String(minVal),
+    lowAlerts: item.lowStockAlertsEnabled !== false,
+  };
 }
 
 function InventoryView() {
@@ -59,6 +97,11 @@ function InventoryView() {
   const [stockStatusFilter, setStockStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('currentStock');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetRows, setSheetRows] = useState<SheetRowDraft[]>([]);
+  const [sheetSaving, setSheetSaving] = useState(false);
 
   const { toast } = useToast();
   const { user } = usePingUser();
@@ -102,6 +145,114 @@ function InventoryView() {
     filterAndSortItems();
   }, [inventoryItems, searchTerm, categoryFilter, stockStatusFilter, sortBy, sortOrder]);
 
+  const visibleIds = useMemo(
+    () => new Set(filteredItems.map((i) => i.id)),
+    [filteredItems]
+  );
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => visibleIds.has(id)));
+  }, [visibleIds]);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const allFilteredSelected =
+    filteredItems.length > 0 &&
+    filteredItems.every((i) => selectedIds.includes(i.id));
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(filteredItems.map((i) => i.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const openBulkSheet = () => {
+    const rows = filteredItems.filter((i) => selectedIds.includes(i.id));
+    if (rows.length === 0) {
+      toast({
+        title: 'Select rows first',
+        text: 'Click rows or use checkboxes to choose inventory lines to edit.',
+        type: 'error',
+      });
+      return;
+    }
+    setSheetRows(rows.map(itemToSheetDraft));
+    setSheetOpen(true);
+  };
+
+  const updateSheetRow = (
+    id: string,
+    patch: Partial<Omit<SheetRowDraft, 'id' | 'productName' | 'sku' | 'categoryName'>>
+  ) => {
+    setSheetRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...patch } : r))
+    );
+  };
+
+  const saveBulkSheet = async () => {
+    setSheetSaving(true);
+    try {
+      for (const row of sheetRows) {
+        const cs = Math.max(0, Math.floor(Number(row.currentStock)));
+        if (!Number.isFinite(cs)) {
+          toast({
+            title: 'Invalid stock',
+            text: `Check current stock for ${row.productName}`,
+            type: 'error',
+          });
+          return;
+        }
+
+        let minStock: number | null;
+        const minRaw = row.minStock.trim();
+        if (minRaw === '') {
+          minStock = null;
+        } else {
+          const m = Math.max(0, Math.floor(Number(minRaw)));
+          if (!Number.isFinite(m)) {
+            toast({
+              title: 'Invalid min stock',
+              text: `Check min stock for ${row.productName}`,
+              type: 'error',
+            });
+            return;
+          }
+          minStock = m;
+        }
+
+        await updateShopInventoryStock(row.id, {
+          currentStock: cs,
+          minStockPerItem: minStock,
+          lowStockAlertsEnabled: row.lowAlerts,
+        });
+      }
+
+      toast({
+        title: 'Saved',
+        text: `Updated ${sheetRows.length} row(s).`,
+        type: 'success',
+      });
+      setSheetOpen(false);
+      setSelectedIds([]);
+      await fetchInventoryItems();
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: 'Save failed',
+        text: 'Could not save one or more rows. Try again.',
+        type: 'error',
+      });
+    } finally {
+      setSheetSaving(false);
+    }
+  };
+
   const fetchInventoryItems = async () => {
     if (!selectedShopId) return;
 
@@ -129,7 +280,7 @@ function InventoryView() {
 
   const getStockStatus = (currentStock: number, minStockLevel?: number): 'normal' | 'low-stock' | 'out-of-stock' => {
     console.log("currentStock", currentStock);
-    if (currentStock === 0 || "0") return 'out-of-stock';
+    if (currentStock === 0) return 'out-of-stock';
     if (minStockLevel && currentStock <= minStockLevel) return 'low-stock';
     return 'normal';
   };
@@ -268,11 +419,33 @@ function InventoryView() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
-        <Badge variant="secondary" className="text-sm">
-          {filteredItems.length} of {inventoryItems.length} items
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={openBulkSheet}
+            disabled={selectedIds.length === 0}
+            className="flex items-center gap-2"
+          >
+            <Table2 className="h-4 w-4 shrink-0" />
+            Bulk edit sheet ({selectedIds.length})
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds([])}
+            disabled={selectedIds.length === 0}
+          >
+            Clear selection
+          </Button>
+          <Badge variant="secondary" className="text-sm">
+            {filteredItems.length} of {inventoryItems.length} items
+          </Badge>
+        </div>
       </div>
 
       {/* Filters and Search */}
@@ -378,6 +551,22 @@ function InventoryView() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={
+                        allFilteredSelected
+                          ? true
+                          : selectedIds.length > 0
+                            ? 'indeterminate'
+                            : false
+                      }
+                      onCheckedChange={(s) =>
+                        toggleSelectAllFiltered(s === true)
+                      }
+                      aria-label="Select all visible rows"
+                      disabled={filteredItems.length === 0}
+                    />
+                  </TableHead>
                   <TableHead>Product</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Current Stock</TableHead>
@@ -389,55 +578,91 @@ function InventoryView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-gray-50">
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{item.product.name}</div>
-                        <div className="text-sm text-gray-500">
-                          {item.product.sku} • {item.product.flavor.name}
+                {filteredItems.map((item) => {
+                  const selected = selectedIds.includes(item.id);
+                  return (
+                    <TableRow
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSelect(item.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleSelect(item.id);
+                        }
+                      }}
+                      className={cn(
+                        'cursor-pointer hover:bg-gray-50',
+                        selected && 'bg-muted/60'
+                      )}
+                    >
+                      <TableCell
+                        className="w-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selected}
+                          onCheckedChange={(s) =>
+                            setSelectedIds((prev) =>
+                              s === true
+                                ? prev.includes(item.id)
+                                  ? prev
+                                  : [...prev, item.id]
+                                : prev.filter((x) => x !== item.id)
+                            )
+                          }
+                          aria-label={`Select ${item.product.name}`}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{item.product.name}</div>
+                          <div className="text-sm text-gray-500">
+                            {item.product.sku} • {item.product.flavor.name}
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">{item.product.category.name}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-lg">{item.currentStock}</div>
-                      <div className="text-sm text-gray-500">units</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {item.minStockPerItem || item.product.minStockLevel || 'N/A'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStockStatusIcon(item.stockStatus)}
-                        <Badge className={getStockStatusColor(item.stockStatus)}>
-                          {item.stockStatus.replace('-', ' ').toUpperCase()}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        ₹{item.product.unitPrice.toFixed(2)}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm text-gray-500">
-                        {item.lastRestockDate
-                          ? new Date(item.lastRestockDate).toLocaleDateString()
-                          : 'Never'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        {getStockTrendIcon(item.stockTrend)}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">{item.product.category.name}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium text-lg">{item.currentStock}</div>
+                        <div className="text-sm text-gray-500">units</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {item.minStockPerItem ?? item.product.minStockLevel ?? 'N/A'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getStockStatusIcon(item.stockStatus)}
+                          <Badge className={getStockStatusColor(item.stockStatus)}>
+                            {item.stockStatus.replace('-', ' ').toUpperCase()}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">
+                          ₹{item.product.unitPrice.toFixed(2)}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm text-gray-500">
+                          {item.lastRestockDate
+                            ? new Date(item.lastRestockDate).toLocaleDateString()
+                            : 'Never'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center">
+                          {getStockTrendIcon(item.stockTrend)}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {filteredItems.length === 0 && (
@@ -448,6 +673,95 @@ function InventoryView() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={sheetOpen} onOpenChange={setSheetOpen}>
+        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] flex flex-col sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Bulk edit (spreadsheet)</DialogTitle>
+            <DialogDescription>
+              Edit like a spreadsheet: current stock, min stock (blank = use product default only after save clears shop override), and low-stock alerts. Save writes each row to the server.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="overflow-auto flex-1 min-h-0 rounded-md border">
+            <table className="w-full border-collapse text-sm [&_th]:border [&_td]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1.5 [&_th]:text-left [&_td]:p-0">
+              <thead>
+                <tr>
+                  <th className="w-8">#</th>
+                  <th className="min-w-[140px]">Product</th>
+                  <th className="min-w-[88px]">SKU</th>
+                  <th className="min-w-[100px]">Category</th>
+                  <th className="min-w-[100px]">Current stock</th>
+                  <th className="min-w-[100px]">Min stock</th>
+                  <th className="min-w-[72px] text-center">Alerts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheetRows.map((row, idx) => (
+                  <tr key={row.id}>
+                    <td className="bg-muted/30 text-center text-muted-foreground">
+                      {idx + 1}
+                    </td>
+                    <td className="px-2 py-1 align-middle">{row.productName}</td>
+                    <td className="px-2 py-1 align-middle text-muted-foreground">
+                      {row.sku}
+                    </td>
+                    <td className="px-2 py-1 align-middle">{row.categoryName}</td>
+                    <td className="align-middle">
+                      <Input
+                        type="number"
+                        min={0}
+                        className="h-9 rounded-none border-0 bg-transparent focus-visible:ring-2 focus-visible:ring-inset"
+                        value={row.currentStock}
+                        onChange={(e) =>
+                          updateSheetRow(row.id, { currentStock: e.target.value })
+                        }
+                      />
+                    </td>
+                    <td className="align-middle">
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="—"
+                        className="h-9 rounded-none border-0 bg-transparent focus-visible:ring-2 focus-visible:ring-inset"
+                        value={row.minStock}
+                        onChange={(e) =>
+                          updateSheetRow(row.id, { minStock: e.target.value })
+                        }
+                      />
+                    </td>
+                    <td className="align-middle text-center">
+                      <div className="flex justify-center py-1">
+                        <Checkbox
+                          checked={row.lowAlerts}
+                          onCheckedChange={(s) =>
+                            updateSheetRow(row.id, {
+                              lowAlerts: s === true,
+                            })
+                          }
+                          aria-label={`Alerts ${row.productName}`}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSheetOpen(false)}
+              disabled={sheetSaving}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={saveBulkSheet} disabled={sheetSaving}>
+              {sheetSaving ? 'Saving…' : 'Save all'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

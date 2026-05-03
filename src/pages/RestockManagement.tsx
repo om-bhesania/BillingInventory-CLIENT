@@ -976,9 +976,23 @@ const RestockManagement: React.FC = () => {
                   return (
                     <tr
                       key={isBatch ? `batch-${row.batchId}` : primary.id}
-                      className="border-b hover:bg-gray-50"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleRowSelection(rk, !rowChecked)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggleRowSelection(rk, !rowChecked);
+                        }
+                      }}
+                      className={`border-b hover:bg-gray-50 cursor-pointer ${
+                        rowChecked ? "bg-muted/50" : ""
+                      }`}
                     >
-                      <td className="p-3 align-middle">
+                      <td
+                        className="p-3 align-middle"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Checkbox
                           checked={rowChecked}
                           onCheckedChange={(state) =>
@@ -1048,7 +1062,10 @@ const RestockManagement: React.FC = () => {
                           {createdLabel}
                         </div>
                       </td>
-                      <td className="p-3">
+                      <td
+                        className="p-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex gap-2">
                           <Button
                             variant="outline"

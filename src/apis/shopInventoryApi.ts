@@ -49,7 +49,9 @@ export interface BulkCreateShopInventoryRequest {
 }
 
 export interface UpdateStockRequest {
-  currentStock: number;
+  currentStock?: number;
+  minStockPerItem?: number | null;
+  lowStockAlertsEnabled?: boolean;
 }
 
 // Create shop inventory entry
