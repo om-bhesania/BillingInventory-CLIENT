@@ -20,6 +20,7 @@ export interface RestockRequest {
   fulfilledAt?: string;
   createdAt: string;
   updatedAt: string;
+  submissionBatchId?: string | null;
   shop?: {
     id: string;
     name: string;
@@ -47,6 +48,8 @@ export interface CreateRestockRequestRequest {
   requestedAmount: number;
   notes?: string;
   requestType?: "RESTOCK" | "INVENTORY_ADD";
+  /** Same value on each line when submitting multiple products in one action */
+  submissionBatchId?: string;
   paymentMethod?: "upfront" | "credit";
   discountCode?: string;
   totalAmount?: number;

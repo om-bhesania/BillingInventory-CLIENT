@@ -413,8 +413,10 @@ console.log("userShopIds", pingUser);
         return;
       }
 
-      // Create restock requests with payment data
+      // Create restock requests with payment data (one submission batch for admin review)
       const restockRequestIds: string[] = [];
+      const submissionBatchId =
+        inventoryItems.length > 1 ? crypto.randomUUID() : undefined;
 
       for (const item of inventoryItems) {
         const product = products.find((p) => p.id === item.productId);
@@ -425,6 +427,7 @@ console.log("userShopIds", pingUser);
           productId: item.productId,
           requestedAmount: item.currentStock,
           requestType: "INVENTORY_ADD",
+          ...(submissionBatchId ? { submissionBatchId } : {}),
           paymentMethod,
           discountCode: selectedDiscountCode?.code,
           totalAmount: itemTotal,
