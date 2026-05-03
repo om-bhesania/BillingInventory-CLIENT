@@ -20,7 +20,11 @@ import { printInvoice } from "@/lib/utils";
 import { pingUser } from "@/apis/pingapi";
 import { getShop } from "@/apis/shopapi";
 import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
-import { createBilling, getNextInvoiceNumber } from "@/apis/billingApi";
+import {
+  createBilling,
+  getNextInvoiceNumber,
+  type Billing,
+} from "@/apis/billingApi";
 import { getProducts } from "@/apis/productapis";
 
 type RoleString = string | null | undefined;
@@ -370,15 +374,13 @@ const InvoiceForm = () => {
     return digits.length === 10;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
+  const validateForCreate = (): boolean => {
     if (!formData.customerName || formData.items.length === 0) {
       showError(
         "Validation Error",
         "Please fill all required fields and add at least one item"
       );
-      return;
+      return false;
     }
 
     if (
@@ -389,15 +391,14 @@ const InvoiceForm = () => {
         "Validation Error",
         "Please enter a valid 10-digit Indian phone number"
       );
-      return;
+      return false;
     }
 
     if (formData.invoiceType === "SHOP" && !formData.shopId) {
       showError("Validation Error", "Please select a shop for shop invoices");
-      return;
+      return false;
     }
 
-    // Check if all items have valid selections
     const hasInvalidItems = formData.items.some(
       (item) => !item.productId || item.quantity <= 0
     );
@@ -407,31 +408,39 @@ const InvoiceForm = () => {
         "Validation Error",
         "Please ensure all items are properly selected and quantities are valid"
       );
-      return;
+      return false;
     }
+
+    return true;
+  };
+
+  const buildCreatePayload = () => ({
+    shopId: formData.invoiceType === "SHOP" ? formData.shopId : undefined,
+    customerName: formData.customerName,
+    customerEmail: formData.customerEmail || undefined,
+    customerContact: formData.customerContact
+      ? formData.customerContact.replace(/\D/g, "")
+      : undefined,
+    invoiceType: formData.invoiceType,
+    items: formData.items.map((it) => ({
+      productId: it.productId,
+      productName: it.name,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+    })),
+    subtotal: Number(calculateSubtotal().toFixed(2)),
+    tax: Number(calculateTotalTax().toFixed(2)),
+    discount: Number(calculateDiscount().toFixed(2)),
+    total: Number(calculateTotal().toFixed(2)),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForCreate()) return;
 
     try {
       setIsLoading(true);
-      const payload = {
-        shopId: formData.invoiceType === "SHOP" ? formData.shopId : undefined,
-        customerName: formData.customerName,
-        customerEmail: formData.customerEmail || undefined,
-        customerContact: formData.customerContact
-          ? formData.customerContact.replace(/\D/g, "")
-          : undefined,
-        invoiceType: formData.invoiceType,
-        items: formData.items.map((it) => ({
-          productId: it.productId,
-          productName: it.name,
-          quantity: it.quantity,
-          unitPrice: it.unitPrice,
-        })),
-        subtotal: Number(calculateSubtotal().toFixed(2)),
-        tax: Number(calculateTotalTax().toFixed(2)),
-        discount: Number(calculateDiscount().toFixed(2)),
-        total: Number(calculateTotal().toFixed(2)),
-      };
-      const billing = await createBilling(payload as any);
+      const billing = await createBilling(buildCreatePayload() as any);
       const invLabel = billing.invoiceNumber || billing.id;
       showSuccess(
         "Invoice Created",
@@ -474,30 +483,68 @@ const InvoiceForm = () => {
     return managerMatchedShop || selected;
   };
 
-  const handlePrintReceipt = () => {
-    const selectedShop = getSelectedShopDetails();
+  const printFromSavedBilling = (
+    billing: Billing,
+    selectedShop: ReturnType<typeof getSelectedShopDetails>
+  ) => {
+    const shop = billing.shop;
     const outletName =
-      formData.invoiceType === "FACTORY"
+      billing.invoiceType === "FACTORY"
         ? "Factory"
-        : selectedShop?.name?.trim() || "";
+        : shop?.name?.trim() ||
+          selectedShop?.name?.trim() ||
+          "";
+
     printInvoice({
-      ...formData,
-      customer: formData.customerName,
-      customerName: formData.customerName,
-      contactNumber: formData.customerContact,
-      shop: outletName,
+      customerName: billing.customerName || formData.customerName,
+      customer: billing.customerName || formData.customerName,
+      customerContact: billing.customerContact || formData.customerContact,
+      contactNumber: billing.customerContact || "",
       shopName: outletName,
+      shop: outletName,
+      invoiceNumber: billing.invoiceNumber || billing.id,
+      invoiceDate: billing.createdAt,
       shopAddress:
-        (selectedShop?.address || "").trim() || DEFAULT_RECEIPT_ADDRESS,
-      shopContact: selectedShop?.contactNumber || "",
-      tax: calculateTotalTax(),
-      discount: calculateDiscount(),
-      total: calculateTotal(),
-      items: formData.items.map((item) => ({
-        ...item,
+        (shop?.address || "").trim() ||
+        (selectedShop?.address || "").trim() ||
+        DEFAULT_RECEIPT_ADDRESS,
+      shopContact:
+        shop?.contactNumber || selectedShop?.contactNumber || "",
+      tax: billing.tax,
+      discount: billing.discount,
+      total: billing.total,
+      notes: formData.notes,
+      items: billing.items.map((item) => ({
+        name: item.productName || `Product ${item.productId}`,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
         price: item.unitPrice,
       })),
     });
+  };
+
+  const handlePrintReceipt = async () => {
+    if (!validateForCreate()) return;
+
+    try {
+      setIsLoading(true);
+      const billing = await createBilling(buildCreatePayload() as any);
+      const selectedShop = getSelectedShopDetails();
+      printFromSavedBilling(billing, selectedShop);
+      const invLabel = billing.invoiceNumber || billing.id;
+      showSuccess(
+        "Invoice saved",
+        `Invoice ${invLabel} saved and sent to printer`,
+        () => navigate("/invoices")
+      );
+    } catch (err: any) {
+      console.error("Save and print failed", err);
+      const errorMessage =
+        err?.response?.data?.error || "Failed to save invoice";
+      showWarning("Warning", errorMessage || "Failed to save invoice");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -990,15 +1037,16 @@ const InvoiceForm = () => {
         </div>
 
         <div className="flex gap-4">
-          <Button type="submit">
+          <Button type="submit" disabled={isLoading}>
             {isEditing ? "Update Invoice" : "Create Invoice"}
           </Button>
           <Button
             type="button"
             variant="secondary"
+            disabled={isLoading}
             onClick={handlePrintReceipt}
           >
-            <Printer className="h-4 w-4 mr-2" /> Print Receipt (3")
+            <Printer className="h-4 w-4 mr-2" /> Save & print receipt (3")
           </Button>
           <Button
             type="button"
