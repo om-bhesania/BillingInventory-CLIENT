@@ -517,7 +517,7 @@ const Sidebar: React.FC = () => {
     <>
       <div className="hidden h-screen w-64 flex-col border-r bg-background p-4 md:flex">
         <div className="flex h-10 items-center px-2">
-          <h2 className="text-lg font-semibold">Blizz</h2>
+          <h2 className="text-lg font-semibold">BLIZZ</h2>
         </div>
         <div className="mt-8 flex flex-1 flex-col gap-4">
           {renderNavItems()}
@@ -547,7 +547,7 @@ const Sidebar: React.FC = () => {
           onInteractOutside={() => setIsMobileOpen(false)}
         >
           <div className="flex h-10 items-center px-2">
-            <h2 className="text-lg font-semibold">Blizz</h2>
+            <h2 className="text-lg font-semibold">BLIZZ</h2>
           </div>
           <div className="mt-8 flex flex-1 flex-col gap-4">
             {renderNavItems()}

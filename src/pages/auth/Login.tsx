@@ -58,7 +58,7 @@ const Login = () => {
               <DollarSign className="h-6 w-6 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Blizz</CardTitle>
+          <CardTitle className="text-2xl font-bold">BLIZZ</CardTitle>
           <CardDescription>
             Enter your credentials to access your dashboard
           </CardDescription>

@@ -20,8 +20,7 @@ import { printInvoice } from "@/lib/utils";
 import { pingUser } from "@/apis/pingapi";
 import { getShop } from "@/apis/shopapi";
 import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
-import { createBilling } from "@/apis/billingApi";
-import { getNextInvoiceNumber } from "@/apis/billingApi";
+import { createBilling, getNextInvoiceNumber } from "@/apis/billingApi";
 import { getProducts } from "@/apis/productapis";
 
 type RoleString = string | null | undefined;
@@ -147,17 +146,6 @@ const InvoiceForm = () => {
           const defaultShopId = userManaged[0].id;
           setFormData((prev) => ({ ...prev, shopId: defaultShopId }));
         }
-
-        // Prefill next invoice number by looking up latest billing for selected shop once selected
-        try {
-          const next = await getNextInvoiceNumber();
-          if (next?.invoiceNumber) {
-            setFormData((prev) => ({
-              ...prev,
-              invoiceNumber: next.invoiceNumber,
-            }));
-          }
-        } catch {}
       } catch (e) {
         console.error("Failed to initialize invoice form", e);
       } finally {
@@ -166,6 +154,27 @@ const InvoiceForm = () => {
     };
     init();
   }, []);
+
+  useEffect(() => {
+    if (isEditing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await getNextInvoiceNumber();
+        if (!cancelled && next?.invoiceNumber) {
+          setFormData((prev) => ({
+            ...prev,
+            invoiceNumber: next.invoiceNumber,
+          }));
+        }
+      } catch {
+        /* preview only */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.invoiceType, isEditing]);
 
   useEffect(() => {
     const loadInventory = async () => {
@@ -405,7 +414,6 @@ const InvoiceForm = () => {
       setIsLoading(true);
       const payload = {
         shopId: formData.invoiceType === "SHOP" ? formData.shopId : undefined,
-        invoiceNumber: formData.invoiceNumber || undefined,
         customerName: formData.customerName,
         customerEmail: formData.customerEmail || undefined,
         customerContact: formData.customerContact
@@ -424,9 +432,10 @@ const InvoiceForm = () => {
         total: Number(calculateTotal().toFixed(2)),
       };
       const billing = await createBilling(payload as any);
+      const invLabel = billing.invoiceNumber || billing.id;
       showSuccess(
         "Invoice Created",
-        `Invoice ${billing.id} created successfully`,
+        `Invoice ${invLabel} created successfully`,
         () => navigate("/invoices")
       );
     } catch (err: any) {
@@ -467,15 +476,23 @@ const InvoiceForm = () => {
 
   const handlePrintReceipt = () => {
     const selectedShop = getSelectedShopDetails();
+    const outletName =
+      formData.invoiceType === "FACTORY"
+        ? "Factory"
+        : selectedShop?.name?.trim() || "";
     printInvoice({
       ...formData,
       customer: formData.customerName,
+      customerName: formData.customerName,
       contactNumber: formData.customerContact,
-      shop: selectedShop?.name || "Blizz",
-      shopName: selectedShop?.name || "Blizz",
+      shop: outletName,
+      shopName: outletName,
       shopAddress:
         (selectedShop?.address || "").trim() || DEFAULT_RECEIPT_ADDRESS,
       shopContact: selectedShop?.contactNumber || "",
+      tax: calculateTotalTax(),
+      discount: calculateDiscount(),
+      total: calculateTotal(),
       items: formData.items.map((item) => ({
         ...item,
         price: item.unitPrice,

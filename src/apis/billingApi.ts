@@ -11,7 +11,7 @@ export interface BillingItem {
 
 export interface Billing {
   id: string;
-  shopId: string;
+  shopId: string | null;
   customerName?: string;
   customerEmail?: string;
   customerContact?: string;
@@ -22,17 +22,19 @@ export interface Billing {
   total: number;
   paymentStatus: "pending" | "paid" | "failed";
   invoiceNumber?: string;
+  invoiceType?: string;
   createdAt: string;
   updatedAt: string;
   shop: {
     id: string;
     name: string;
-  };
+    address?: string | null;
+    contactNumber?: string | null;
+  } | null;
 }
 
 export interface CreateBillingRequest {
-  shopId: string;
-  invoiceNumber?: string;
+  shopId?: string;
   customerName?: string;
   customerEmail?: string;
   customerContact?: string;
@@ -83,7 +85,10 @@ export const getBillingStats = async (shopId: string): Promise<BillingStats> => 
   return service<BillingStats>({ url: API_URL.billing.stats(shopId), method: "GET" });
 };
 
-// Get next invoice number
+// Get next invoice number (max BLIZZ/YYYY/* in DB + 1; matches server create rule)
 export const getNextInvoiceNumber = async (): Promise<{ invoiceNumber: string }> => {
-  return service<{ invoiceNumber: string }>({ url: `${API_URL.billing.create}/next-invoice-number`.replace(/\/$/, "") , method: "GET" });
+  return service<{ invoiceNumber: string }>({
+    url: API_URL.billing.nextInvoiceNumber,
+    method: "GET",
+  });
 };

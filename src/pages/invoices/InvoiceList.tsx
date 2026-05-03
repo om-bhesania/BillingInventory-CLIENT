@@ -263,21 +263,37 @@ const InvoiceList = () => {
         productMap.set(product.id, product.name);
       });
 
+      const shop = billing.shop;
+      const outletName =
+        billing.invoiceType === "FACTORY" ? "Factory" : shop?.name || "";
+
       // Convert billing data to the format expected by printInvoice
       const formattedData = {
+        customerName: billing.customerName || "N/A",
         customer: billing.customerName || "N/A",
-        contactNumber: "", // Not available in billing data
-        shop: billing.shop.name,
-        invoiceDate: new Date(billing.createdAt).toLocaleDateString(),
+        customerContact: billing.customerContact || "",
+        contactNumber: billing.customerContact || "",
+        shopName: outletName,
+        shop: outletName,
+        invoiceNumber: billing.invoiceNumber || billing.id,
+        invoiceDate: billing.createdAt,
+        shopAddress:
+          (shop?.address || "").trim() ||
+          "Shree Foods private limited 30,\nDev industrial area, BIDC, Gorwa, Vadodara.",
+        shopContact: shop?.contactNumber || "",
+        tax: billing.tax,
+        discount: billing.discount,
+        total: billing.total,
         items: billing.items.map((item: any) => ({
           name:
             item.productName ||
             productMap.get(item.productId) ||
             `Product ${item.productId}`,
           quantity: item.quantity,
+          unitPrice: item.unitPrice,
           price: item.unitPrice,
         })),
-        notes: "", // Not available in billing data
+        notes: "",
       };
 
       // Use the print function which will open a print dialog

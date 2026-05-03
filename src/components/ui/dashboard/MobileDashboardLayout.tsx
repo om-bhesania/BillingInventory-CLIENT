@@ -34,7 +34,7 @@ export const MobileDashboardLayout: React.FC<MobileDashboardLayoutProps> = ({
               <SheetContent side="left" className="w-64 p-0">
                 <div className="flex h-full flex-col">
                   <div className="flex h-16 items-center justify-between px-4 border-b">
-                    <h2 className="text-lg font-semibold">Blizz</h2>
+                    <h2 className="text-lg font-semibold">BLIZZ</h2>
                     <Button
                       variant="ghost"
                       size="icon"

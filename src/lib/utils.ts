@@ -49,7 +49,12 @@ export const printInvoice = (formData: any) => {
     minute: "2-digit",
   });
 
-  const shopName = "BLIZZ";
+  const brandTitle = "BLIZZ";
+  const outletRaw =
+    (formData?.shopName || formData?.shop || "").trim() || "";
+  const outletLine = outletRaw
+    ? `<div class="center outlet-sub">${escapeHtml(outletRaw)}</div>`
+    : "";
   const shopAddress = escapeHtml(
     formData?.shopAddress || "Shop address not available"
   );
@@ -96,7 +101,8 @@ export const printInvoice = (formData: any) => {
       }
       .center { text-align: center; }
       .line { border-top: 1px dashed #000; margin: 6px 0; }
-      .shop-name { font-weight: 700; font-size: 16px; }
+      .brand-title { font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
+      .outlet-sub { font-size: 11px; font-weight: 500; opacity: 0.88; margin-top: 2px; }
       .muted { opacity: 0.9; }
       .heading { font-weight: 700; margin-bottom: 2px; }
       .row {
@@ -135,7 +141,8 @@ export const printInvoice = (formData: any) => {
     </head>
     <body>
       <div class="receipt">
-        <div class="center shop-name">${shopName}</div>
+        <div class="center brand-title">${brandTitle}</div>
+        ${outletLine}
         <div class="center muted">${shopAddress}</div>
         ${shopContact ? `<div class="center muted">Tel: ${shopContact}</div>` : ""}
         <div class="line"></div>
