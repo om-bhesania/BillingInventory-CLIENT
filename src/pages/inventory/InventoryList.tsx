@@ -301,11 +301,12 @@ const InventoryList = () => {
           >
             Clear selection
           </Button>
-          <Button asChild size="sm">
-            <Link to="/inventory/add" className="flex items-center">
-              <Plus className="mr-2 h-4 w-4" /> Add New Item
-            </Link>
-          </Button>
+          <Link to="/inventory/add">
+            <Button type="button" size="sm" className="gap-2">
+              <Plus className="h-4 w-4 shrink-0" />
+              Add New Item
+            </Button>
+          </Link>
         </div>
       </div>
 
