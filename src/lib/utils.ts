@@ -27,9 +27,9 @@ export const printInvoice = (formData: any) => {
   });
 
   const subtotal = items.reduce((sum: number, item: any) => sum + item.amount, 0);
-  const tax = Number(formData?.tax ?? subtotal * 0.18);
+  const tax = Number(formData?.tax ?? subtotal * (5 / 105));
   const discount = Number(formData?.discount ?? 0);
-  const total = Number(formData?.total ?? subtotal + tax - discount);
+  const total = Number(formData?.total ?? subtotal - discount);
   const totalItems = items.reduce(
     (sum: number, item: any) => sum + Number(item.quantity || 0),
     0
@@ -157,8 +157,8 @@ export const printInvoice = (formData: any) => {
         <table>${itemRows}</table>
         <div class="line"></div>
 
-        <div class="row"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>
-        <div class="row"><span>Tax</span><span>${tax.toFixed(2)}</span></div>
+        <div class="row"><span>Subtotal (incl. GST)</span><span>${subtotal.toFixed(2)}</span></div>
+        <div class="row"><span>GST Included (5%)</span><span>${tax.toFixed(2)}</span></div>
         ${discount > 0 ? `<div class="row"><span>Discount</span><span>- ${discount.toFixed(2)}</span></div>` : ""}
         <div class="row"><strong>TOTAL</strong><strong>${total.toFixed(2)}</strong></div>
         ${notes ? `<div class="line"></div><div class="muted">Note: ${notes}</div>` : ""}

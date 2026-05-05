@@ -331,15 +331,15 @@ const InvoiceForm = () => {
   };
 
   const calculateCGST = () => {
-    return calculateSubtotal() * 0.09; // 9% CGST
+    return calculateSubtotal() * (2.5 / 105); // 2.5% component from GST-inclusive prices
   };
 
   const calculateSGST = () => {
-    return calculateSubtotal() * 0.09; // 9% SGST
+    return calculateSubtotal() * (2.5 / 105); // 2.5% component from GST-inclusive prices
   };
 
   const calculateTotalTax = () => {
-    return calculateCGST() + calculateSGST(); // 18% Total GST
+    return calculateCGST() + calculateSGST(); // 5% GST component already included in prices
   };
 
   const calculateTotalCostPrice = () => {
@@ -366,7 +366,7 @@ const InvoiceForm = () => {
   };
 
   const calculateTotal = () => {
-    return calculateSubtotal() + calculateTotalTax() - calculateDiscount();
+    return calculateSubtotal() - calculateDiscount();
   };
 
   const isValidIndianPhone = (val: string) => {
@@ -1005,20 +1005,20 @@ const InvoiceForm = () => {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between font-medium text-base">
-              <span>Subtotal:</span>
+              <span>Subtotal (GST included):</span>
               <span>₹ {calculateSubtotal().toFixed(2)}</span>
             </div>
             <div className="space-y-1 text-sm">
               <div className="flex items-center justify-between">
-                <span>CGST (9%):</span>
+                <span>CGST (2.5%):</span>
                 <span>₹ {calculateCGST().toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>SGST (9%):</span>
+                <span>SGST (2.5%):</span>
                 <span>₹ {calculateSGST().toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between font-medium border-t pt-1">
-                <span>Total Tax (18%):</span>
+                <span>Total GST Included (5%):</span>
                 <span>₹ {calculateTotalTax().toFixed(2)}</span>
               </div>
               {formData.invoiceType === "FACTORY" && calculateDiscount() > 0 && (

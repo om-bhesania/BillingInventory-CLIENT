@@ -220,7 +220,7 @@ const InvoiceList = () => {
               </table>
               <div class="totals">
                 <p>Subtotal: ₹${billing.subtotal.toFixed(2)}</p>
-                <p>Tax (18%): ₹${billing.tax.toFixed(2)}</p>
+                <p>GST Included (5%): ₹${billing.tax.toFixed(2)}</p>
                 <p class="total-row">Total: ₹${billing.total.toFixed(2)}</p>
                 <p><strong>Status:</strong> ${billing.paymentStatus}</p>
               </div>
