@@ -21,6 +21,13 @@ export interface Billing {
   discount: number;
   total: number;
   paymentStatus: "pending" | "paid" | "failed";
+  paymentMethod?: string | null;
+  paymentMethodId?: string | null;
+  paymentBreakdown?: Array<{
+    paymentMethodId: string;
+    paymentMethodName: string;
+    amount: number;
+  }> | null;
   invoiceNumber?: string;
   invoiceType?: string;
   createdAt: string;
@@ -30,6 +37,10 @@ export interface Billing {
     name: string;
     address?: string | null;
     contactNumber?: string | null;
+  } | null;
+  paymentMethodRef?: {
+    id: string;
+    name: string;
   } | null;
 }
 
@@ -43,6 +54,11 @@ export interface CreateBillingRequest {
   tax?: number;
   discount?: number;
   total: number;
+  paymentMethodId?: string;
+  paymentBreakdown?: Array<{
+    paymentMethodId: string;
+    amount: number;
+  }>;
 }
 
 export interface UpdatePaymentStatusRequest {
@@ -58,6 +74,14 @@ export interface BillingStats {
       total: number;
     };
   };
+}
+
+export interface PaymentMethod {
+  id: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Create billing
@@ -90,5 +114,20 @@ export const getNextInvoiceNumber = async (): Promise<{ invoiceNumber: string }>
   return service<{ invoiceNumber: string }>({
     url: API_URL.billing.nextInvoiceNumber,
     method: "GET",
+  });
+};
+
+export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
+  return service<PaymentMethod[]>({
+    url: API_URL.billing.paymentMethods,
+    method: "GET",
+  });
+};
+
+export const createPaymentMethod = async (name: string): Promise<PaymentMethod> => {
+  return service<PaymentMethod>({
+    url: API_URL.billing.paymentMethods,
+    method: "POST",
+    data: { name },
   });
 };

@@ -65,6 +65,7 @@ export const printInvoice = (formData: any) => {
   const customerContact = escapeHtml(
     formData?.customerContact || formData?.contactNumber || ""
   );
+  const paymentMethod = escapeHtml(formData?.paymentMethod || "");
   const notes = escapeHtml(formData?.notes || "");
 
   const itemRows = items
@@ -151,6 +152,7 @@ export const printInvoice = (formData: any) => {
         <div class="row"><span>Date</span><span>${formattedDate}</span></div>
         <div class="row"><span>Customer</span><span>${customerName}</span></div>
         ${customerContact ? `<div class="row"><span>Phone</span><span>${customerContact}</span></div>` : ""}
+        ${paymentMethod ? `<div class="row"><span>Payment</span><span>${paymentMethod}</span></div>` : ""}
         <div class="line"></div>
 
         <div class="row"><span class="heading">ITEMS (${totalItems})</span><span></span></div>

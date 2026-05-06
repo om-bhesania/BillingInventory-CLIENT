@@ -22,8 +22,11 @@ import { getShop } from "@/apis/shopapi";
 import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
 import {
   createBilling,
+  createPaymentMethod,
   getNextInvoiceNumber,
+  getPaymentMethods,
   type Billing,
+  type PaymentMethod,
 } from "@/apis/billingApi";
 import { getProducts } from "@/apis/productapis";
 
@@ -45,6 +48,14 @@ interface ShopSummary {
   contactNumber?: string | null;
   managerId?: string | number | null;
 }
+
+interface PartialPaymentEntry {
+  id: string;
+  paymentMethodId: string;
+  amount: string;
+}
+
+const ADD_NEW_PAYMENT_METHOD = "__add_new_payment_method__";
 
 const sortShopsWithBlizzOnTop = (shops: ShopSummary[]): ShopSummary[] => {
   return [...shops].sort((a, b) => {
@@ -94,6 +105,11 @@ const InvoiceForm = () => {
   const [allShops, setAllShops] = useState<ShopSummary[]>([]);
   const [inventory, setInventory] = useState<ShopInventoryItem[]>([]);
   const [allProducts, setAllProducts] = useState<any[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState("");
+  const [partialPayments, setPartialPayments] = useState<PartialPaymentEntry[]>([
+    { id: Date.now().toString(), paymentMethodId: "", amount: "" },
+  ]);
 
   const isOwner = useMemo(() => {
     const role = (userRole || "").toLowerCase();
@@ -181,6 +197,21 @@ const InvoiceForm = () => {
   }, [formData.invoiceType, isEditing]);
 
   useEffect(() => {
+    const loadPaymentMethods = async () => {
+      try {
+        const methods = await getPaymentMethods();
+        setPaymentMethods(methods || []);
+        if (!selectedPaymentMethodId && methods?.length) {
+          setSelectedPaymentMethodId(methods[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to load payment methods", e);
+      }
+    };
+    loadPaymentMethods();
+  }, []);
+
+  useEffect(() => {
     const loadInventory = async () => {
       if (!formData.shopId || formData.invoiceType !== "SHOP") {
         setInventory([]);
@@ -246,6 +277,63 @@ const InvoiceForm = () => {
 
   const handleSelectChange = (name: string, value: string) => {
     setFormData({ ...formData, [name]: value });
+  };
+
+  const selectedPaymentMethod = useMemo(
+    () => paymentMethods.find((m) => m.id === selectedPaymentMethodId) || null,
+    [paymentMethods, selectedPaymentMethodId]
+  );
+  const isPartialPaymentSelected =
+    selectedPaymentMethod?.name?.toLowerCase() === "partial payment";
+
+  const addPartialPaymentRow = () => {
+    setPartialPayments((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${prev.length}`, paymentMethodId: "", amount: "" },
+    ]);
+  };
+
+  const removePartialPaymentRow = (rowId: string) => {
+    setPartialPayments((prev) =>
+      prev.length <= 1 ? prev : prev.filter((row) => row.id !== rowId)
+    );
+  };
+
+  const updatePartialPaymentRow = (
+    rowId: string,
+    field: "paymentMethodId" | "amount",
+    value: string
+  ) => {
+    setPartialPayments((prev) =>
+      prev.map((row) => (row.id === rowId ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const createPaymentMethodFromPrompt = async () => {
+    const name = window.prompt("Enter payment method name");
+    if (!name || !name.trim()) return;
+    try {
+      const created = await createPaymentMethod(name.trim());
+      setPaymentMethods((prev) => {
+        const merged = [...prev, created];
+        merged.sort((a, b) => a.name.localeCompare(b.name));
+        return merged;
+      });
+      setSelectedPaymentMethodId(created.id);
+      showSuccess("Payment method added", `${created.name} is now available.`);
+    } catch (err: any) {
+      const errorMessage =
+        err?.response?.data?.error || "Failed to create payment method";
+      showWarning("Warning", errorMessage);
+    }
+  };
+
+  const handlePaymentMethodChange = async (value: string) => {
+    if (value === ADD_NEW_PAYMENT_METHOD) {
+      await createPaymentMethodFromPrompt();
+      return;
+    }
+    setSelectedPaymentMethodId(value);
   };
 
   const addItem = () => {
@@ -411,6 +499,38 @@ const InvoiceForm = () => {
       return false;
     }
 
+    if (!selectedPaymentMethodId) {
+      showError("Validation Error", "Please select a payment method");
+      return false;
+    }
+
+    if (isPartialPaymentSelected) {
+      const normalizedRows = partialPayments
+        .map((row) => ({
+          paymentMethodId: row.paymentMethodId,
+          amount: Number(row.amount || 0),
+        }))
+        .filter((row) => row.paymentMethodId && row.amount > 0);
+
+      if (normalizedRows.length === 0) {
+        showError(
+          "Validation Error",
+          "Add at least one valid partial payment entry"
+        );
+        return false;
+      }
+
+      const sum = normalizedRows.reduce((acc, row) => acc + row.amount, 0);
+      const totalAmount = Number(calculateTotal().toFixed(2));
+      if (sum - totalAmount > 0.01) {
+        showError(
+          "Validation Error",
+          "Partial payment total cannot exceed invoice total"
+        );
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -432,6 +552,15 @@ const InvoiceForm = () => {
     tax: Number(calculateTotalTax().toFixed(2)),
     discount: Number(calculateDiscount().toFixed(2)),
     total: Number(calculateTotal().toFixed(2)),
+    paymentMethodId: selectedPaymentMethodId || undefined,
+    paymentBreakdown: isPartialPaymentSelected
+      ? partialPayments
+          .map((row) => ({
+            paymentMethodId: row.paymentMethodId,
+            amount: Number(row.amount || 0),
+          }))
+          .filter((row) => row.paymentMethodId && row.amount > 0)
+      : undefined,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -513,6 +642,7 @@ const InvoiceForm = () => {
       tax: billing.tax,
       discount: billing.discount,
       total: billing.total,
+      paymentMethod: billing.paymentMethod || selectedPaymentMethod?.name || "",
       notes: formData.notes,
       items: billing.items.map((item) => ({
         name: item.productName || `Product ${item.productId}`,
@@ -759,6 +889,103 @@ const InvoiceForm = () => {
                 onChange={handleChange}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="paymentMethod">Payment Method *</Label>
+              <Select
+                value={selectedPaymentMethodId}
+                onValueChange={handlePaymentMethodChange}
+              >
+                <SelectTrigger id="paymentMethod">
+                  <SelectValue placeholder="Select payment method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {paymentMethods.map((method) => (
+                    <SelectItem key={method.id} value={method.id}>
+                      {method.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={ADD_NEW_PAYMENT_METHOD}>
+                    + Add new method
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isPartialPaymentSelected && (
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Partial payments</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addPartialPaymentRow}
+                  >
+                    <Plus className="mr-1 h-3 w-3" /> Add split
+                  </Button>
+                </div>
+                {partialPayments.map((row, idx) => (
+                  <div key={row.id} className="grid grid-cols-12 gap-2">
+                    <div className="col-span-7">
+                      <Select
+                        value={row.paymentMethodId}
+                        onValueChange={(value) =>
+                          updatePartialPaymentRow(row.id, "paymentMethodId", value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={`Method ${idx + 1}`} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentMethods
+                            .filter(
+                              (method) =>
+                                method.name.toLowerCase() !== "partial payment"
+                            )
+                            .map((method) => (
+                              <SelectItem key={method.id} value={method.id}>
+                                {method.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-4">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.amount}
+                        onChange={(e) =>
+                          updatePartialPaymentRow(row.id, "amount", e.target.value)
+                        }
+                        placeholder="Amount"
+                      />
+                    </div>
+                    <div className="col-span-1 flex items-center justify-center">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removePartialPaymentRow(row.id)}
+                        disabled={partialPayments.length <= 1}
+                        title="Remove split"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-xs text-muted-foreground">
+                  Paid now: ₹
+                  {partialPayments
+                    .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+                    .toFixed(2)}{" "}
+                  / ₹{calculateTotal().toFixed(2)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

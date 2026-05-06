@@ -222,6 +222,14 @@ const InvoiceList = () => {
                 <p>Subtotal: ₹${billing.subtotal.toFixed(2)}</p>
                 <p>GST Included (5%): ₹${billing.tax.toFixed(2)}</p>
                 <p class="total-row">Total: ₹${billing.total.toFixed(2)}</p>
+                <p><strong>Payment Method:</strong> ${billing.paymentMethod || "N/A"}</p>
+                ${
+                  Array.isArray(billing.paymentBreakdown) && billing.paymentBreakdown.length > 0
+                    ? `<p><strong>Partial Payments:</strong> ${billing.paymentBreakdown
+                        .map((p: any) => `${p.paymentMethodName}: ₹${Number(p.amount || 0).toFixed(2)}`)
+                        .join(", ")}</p>`
+                    : ""
+                }
                 <p><strong>Status:</strong> ${billing.paymentStatus}</p>
               </div>
             </div>
@@ -284,6 +292,7 @@ const InvoiceList = () => {
         tax: billing.tax,
         discount: billing.discount,
         total: billing.total,
+        paymentMethod: billing.paymentMethod || "",
         items: billing.items.map((item: any) => ({
           name:
             item.productName ||
