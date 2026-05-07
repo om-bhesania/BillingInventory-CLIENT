@@ -118,35 +118,23 @@ export const getNextInvoiceNumber = async (): Promise<{ invoiceNumber: string }>
 };
 
 export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
-  try {
-    return await service<PaymentMethod[]>({
-      url: API_URL.billing.paymentMethods,
-      method: "GET",
-    });
-  } catch (error: any) {
-    const status = error?.response?.status;
-    if (status !== 401 && status !== 403 && status !== 404) throw error;
-    return service<PaymentMethod[]>({
-      url: API_URL.billing.paymentMethods,
-      method: "GET",
-    });
-  }
+  return service<PaymentMethod[]>({
+    url: API_URL.billing.paymentMethods,
+    method: "GET",
+  });
 };
 
 export const createPaymentMethod = async (name: string): Promise<PaymentMethod> => {
-  try {
-    return await service<PaymentMethod>({
-      url: API_URL.billing.paymentMethods,
-      method: "POST",
-      data: { name },
-    });
-  } catch (error: any) {
-    const status = error?.response?.status;
-    if (status !== 401 && status !== 403 && status !== 404) throw error;
-    return service<PaymentMethod>({
-      url: API_URL.billing.paymentMethods,
-      method: "POST",
-      data: { name },
-    });
-  }
+  return service<PaymentMethod>({
+    url: API_URL.billing.paymentMethods,
+    method: "POST",
+    data: { name },
+  });
+};
+
+export const deletePaymentMethod = async (id: string): Promise<{ message: string }> => {
+  return service<{ message: string }>({
+    url: API_URL.billing.deletePaymentMethod(id),
+    method: "DELETE",
+  });
 };

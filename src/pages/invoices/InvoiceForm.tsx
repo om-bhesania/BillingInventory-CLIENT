@@ -22,6 +22,7 @@ import { getShop } from "@/apis/shopapi";
 import { getShopInventory, ShopInventoryItem } from "@/apis/shopInventoryApi";
 import {
   createBilling,
+  deletePaymentMethod,
   createPaymentMethod,
   getNextInvoiceNumber,
   getPaymentMethods,
@@ -99,6 +100,7 @@ const InvoiceForm = () => {
   const [canEditInvoiceNumber, setCanEditInvoiceNumber] = useState(false);
   const [userRole, setUserRole] = useState<RoleString>(null);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [managedShops, setManagedShops] = useState<
     ShopSummary[]
   >([]);
@@ -123,6 +125,10 @@ const InvoiceForm = () => {
     );
   }, [userRole]);
 
+  const canDeletePaymentMethods = useMemo(() => {
+    return currentUserEmail.trim().toLowerCase() === "bhesaniaom@gmail.com";
+  }, [currentUserEmail]);
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -130,6 +136,7 @@ const InvoiceForm = () => {
         const ping = await pingUser();
         const role = ping.user?.role || null;
         setCurrentUserId(String(ping.user?.id ?? ""));
+        setCurrentUserEmail(String(ping.user?.email ?? ""));
         setUserRole(role);
         const userManaged = ping.user?.managedShops || [];
         setManagedShops(
@@ -326,6 +333,36 @@ const InvoiceForm = () => {
         err?.response?.data?.error || "Failed to create payment method";
       showWarning("Warning", errorMessage);
     }
+  };
+
+  const deleteSelectedPaymentMethod = async () => {
+    if (!canDeletePaymentMethods || !selectedPaymentMethodId) return;
+
+    const method = paymentMethods.find((m) => m.id === selectedPaymentMethodId);
+    if (!method) return;
+
+    showConfirm(
+      "Delete payment method?",
+      `Delete "${method.name}" permanently from database?`,
+      async () => {
+        try {
+          await deletePaymentMethod(method.id);
+          const methods = await getPaymentMethods();
+          setPaymentMethods(methods || []);
+          const fallbackId =
+            methods?.find((m) => m.id !== method.id)?.id || methods?.[0]?.id || "";
+          setSelectedPaymentMethodId(fallbackId);
+          showSuccess("Payment method deleted", `"${method.name}" removed.`);
+        } catch (err: any) {
+          const errorMessage =
+            err?.response?.data?.error || "Failed to delete payment method";
+          showError("Delete failed", errorMessage);
+        }
+      },
+      undefined,
+      "Yes, delete",
+      "Cancel"
+    );
   };
 
   const handlePaymentMethodChange = async (value: string) => {
@@ -891,7 +928,20 @@ const InvoiceForm = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="paymentMethod">Payment Method *</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="paymentMethod">Payment Method *</Label>
+                {canDeletePaymentMethods && selectedPaymentMethodId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={deleteSelectedPaymentMethod}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" /> Remove method
+                  </Button>
+                )}
+              </div>
               <Select
                 value={selectedPaymentMethodId}
                 onValueChange={handlePaymentMethodChange}
