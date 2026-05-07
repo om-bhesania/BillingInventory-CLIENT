@@ -89,7 +89,6 @@ export const API_URL = {
   billing: {
     create: "/billing",
     nextInvoiceNumber: "/billing/next-invoice-number",
-    paymentMethod: "/billing/payment-method",
     paymentMethods: "/billing/payment-methods",
     byShopId: (shopId: string) => `/billing/${shopId}`,
     byId: (id: string) => `/billing/billing/${id}`,
