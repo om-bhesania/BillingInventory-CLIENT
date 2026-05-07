@@ -118,16 +118,33 @@ export const getNextInvoiceNumber = async (): Promise<{ invoiceNumber: string }>
 };
 
 export const getPaymentMethods = async (): Promise<PaymentMethod[]> => {
-  return service<PaymentMethod[]>({
-    url: API_URL.billing.paymentMethods,
-    method: "GET",
-  });
+  try {
+    return await service<PaymentMethod[]>({
+      url: API_URL.billing.paymentMethod,
+      method: "GET",
+    });
+  } catch (error: any) {
+    if (error?.response?.status !== 404) throw error;
+    return service<PaymentMethod[]>({
+      url: API_URL.billing.paymentMethods,
+      method: "GET",
+    });
+  }
 };
 
 export const createPaymentMethod = async (name: string): Promise<PaymentMethod> => {
-  return service<PaymentMethod>({
-    url: API_URL.billing.paymentMethods,
-    method: "POST",
-    data: { name },
-  });
+  try {
+    return await service<PaymentMethod>({
+      url: API_URL.billing.paymentMethod,
+      method: "POST",
+      data: { name },
+    });
+  } catch (error: any) {
+    if (error?.response?.status !== 404) throw error;
+    return service<PaymentMethod>({
+      url: API_URL.billing.paymentMethods,
+      method: "POST",
+      data: { name },
+    });
+  }
 };
