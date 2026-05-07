@@ -67,6 +67,7 @@ export const printInvoice = (formData: any) => {
   );
   const paymentMethod = escapeHtml(formData?.paymentMethod || "");
   const notes = escapeHtml(formData?.notes || "");
+  const logoUrl = `${window.location.origin}/logo.png`;
 
   const itemRows = items
     .map(
@@ -103,6 +104,12 @@ export const printInvoice = (formData: any) => {
       .center { text-align: center; }
       .line { border-top: 1px dashed #000; margin: 6px 0; }
       .brand-title { font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
+      .logo-wrap { text-align: center; margin-bottom: 4px; }
+      .logo {
+        max-width: 38mm;
+        max-height: 24mm;
+        object-fit: contain;
+      }
       .outlet-sub { font-size: 11px; font-weight: 500; opacity: 0.88; margin-top: 2px; }
       .muted { opacity: 0.9; }
       .heading { font-weight: 700; margin-bottom: 2px; }
@@ -142,6 +149,9 @@ export const printInvoice = (formData: any) => {
     </head>
     <body>
       <div class="receipt">
+        <div class="logo-wrap">
+          <img class="logo" src="${logoUrl}" alt="Blizz logo" />
+        </div>
         <div class="center brand-title">${brandTitle}</div>
         ${outletLine}
         <div class="center muted">${shopAddress}</div>
